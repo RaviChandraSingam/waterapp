@@ -1,0 +1,27 @@
+{
+  "expo": {
+    "name": "WaterApp",
+    "slug": "waterapp-mobile",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": null,
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "backgroundColor": "#2563eb"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.waterapp.mobile"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#2563eb"
+      },
+      "package": "com.waterapp.mobile"
+    },
+    "extra": {
+      "apiUrl": "http://192.168.1.100:3000"
+    }
+  }
+}

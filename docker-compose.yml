@@ -1,0 +1,53 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: waterapp-db
+    environment:
+      POSTGRES_DB: waterapp
+      POSTGRES_USER: waterapp
+      POSTGRES_PASSWORD: waterapp_secret
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./backend/src/db/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+      - ./backend/src/db/seed.sql:/docker-entrypoint-initdb.d/02-seed.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U waterapp"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build: ./backend
+    container_name: waterapp-backend
+    environment:
+      DATABASE_URL: postgresql://waterapp:waterapp_secret@db:5432/waterapp
+      JWT_SECRET: waterapp_jwt_secret_change_in_production
+      PORT: 3000
+    ports:
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src
+    command: npm run dev
+
+  web:
+    build: ./web
+    container_name: waterapp-web
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+    volumes:
+      - ./web/src:/app/src
+      - ./web/vite.config.js:/app/vite.config.js
+    environment:
+      VITE_API_URL: http://backend:3000
+
+volumes:
+  pgdata:
