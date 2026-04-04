@@ -3,9 +3,18 @@ const multer = require('multer');
 const ExcelJS = require('exceljs');
 const db = require('../db');
 const { authenticate, authorize } = require('../middleware/auth');
+const { recalculateMonthlyRecord } = require('../helpers/recalculate');
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
+
+// Extract a numeric result from a cell that may be a plain number or a cached formula result
+function getCellResult(cell) {
+  if (cell === null || cell === undefined) return null;
+  if (typeof cell === 'object' && 'result' in cell) return parseFloat(cell.result);
+  if (typeof cell === 'number') return cell;
+  return null;
+}
 
 const BLOCK_MAP = {
   'A block': 'a0000000-0000-0000-0000-000000000001',
@@ -85,18 +94,34 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       }
 
       // Import tanker data
-      const tankerCount = summarySheet.getCell('B7').value;
-      const kaveriCount = summarySheet.getCell('B8').value;
+      // Format detection: older Excel files store capacity (12000) in B and actual count in C.
+      // Newer files store count directly in B. If B >= capacity_litres, the count is in C.
+      const TANKER_CAPACITY = 12000;
+
+      const tankerB = summarySheet.getCell('B7').value;
+      const tankerC = summarySheet.getCell('C7').value;
+      const tankerCount = (typeof tankerB === 'number' && tankerB >= TANKER_CAPACITY && typeof tankerC === 'number')
+        ? tankerC   // old format: capacity in B, actual count in C
+        : tankerB;  // new format: count is in B
+
+      const kaveriB = summarySheet.getCell('B8').value;
+      const kaveriC = summarySheet.getCell('C8').value;
+      const kaveriCount = (typeof kaveriB === 'number' && kaveriB >= TANKER_CAPACITY && typeof kaveriC === 'number')
+        ? kaveriC   // old format: capacity in B, actual count in C
+        : kaveriB;  // new format: count is in B
 
       if (tankerCount !== null && typeof tankerCount === 'number') {
         const sourceResult = await db.query("SELECT id, cost_per_unit FROM water_sources WHERE name = 'Regular Tanker'");
         if (sourceResult.rows.length > 0) {
-          const costPerUnit = parseFloat(sourceResult.rows[0].cost_per_unit || 2000);
+          // Use total cost from sheet formula (B22 = "Water tankers bill"); fallback to count × DB rate
+          const sheetTotalCost = getCellResult(summarySheet.getCell('B22').value);
+          const totalCost = sheetTotalCost ?? (tankerCount * parseFloat(sourceResult.rows[0].cost_per_unit || 2000));
+          const costPerUnit = tankerCount > 0 ? totalCost / tankerCount : parseFloat(sourceResult.rows[0].cost_per_unit || 2000);
           await db.query(`
             INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, consumption_litres, total_cost)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, consumption_litres = $5, total_cost = $6
-          `, [monthlyRecordId, sourceResult.rows[0].id, tankerCount, costPerUnit, tankerCount * 12000, tankerCount * costPerUnit]);
+          `, [monthlyRecordId, sourceResult.rows[0].id, tankerCount, costPerUnit, tankerCount * TANKER_CAPACITY, totalCost]);
           stats.waterSources++;
         }
       }
@@ -104,12 +129,15 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       if (kaveriCount !== null && typeof kaveriCount === 'number') {
         const sourceResult = await db.query("SELECT id, cost_per_unit FROM water_sources WHERE name = 'Kaveri Tanker'");
         if (sourceResult.rows.length > 0) {
-          const costPerUnit = parseFloat(sourceResult.rows[0].cost_per_unit || 1400);
+          // Use total cost from sheet formula (B23 = "Kaveri tankers bill"); rate varies per month
+          const sheetTotalCost = getCellResult(summarySheet.getCell('B23').value);
+          const totalCost = sheetTotalCost ?? (kaveriCount * parseFloat(sourceResult.rows[0].cost_per_unit || 1400));
+          const costPerUnit = kaveriCount > 0 ? totalCost / kaveriCount : parseFloat(sourceResult.rows[0].cost_per_unit || 1400);
           await db.query(`
             INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, consumption_litres, total_cost)
             VALUES ($1, $2, $3, $4, $5, $6)
             ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, consumption_litres = $5, total_cost = $6
-          `, [monthlyRecordId, sourceResult.rows[0].id, kaveriCount, costPerUnit, kaveriCount * 12000, kaveriCount * costPerUnit]);
+          `, [monthlyRecordId, sourceResult.rows[0].id, kaveriCount, costPerUnit, kaveriCount * TANKER_CAPACITY, totalCost]);
           stats.waterSources++;
         }
       }
@@ -119,9 +147,10 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       for (const [row, name] of Object.entries(costItems)) {
         const value = summarySheet.getCell(`B${row}`).value;
         if (value !== null && typeof value === 'number') {
-          // Delete existing and re-insert to avoid duplicates
-          await db.query('DELETE FROM cost_items WHERE monthly_record_id = $1 AND item_name = $2', [monthlyRecordId, name]);
-          await db.query('INSERT INTO cost_items (monthly_record_id, item_name, amount) VALUES ($1, $2, $3)', [monthlyRecordId, name, value]);
+          await db.query(`
+            INSERT INTO cost_items (monthly_record_id, item_name, amount) VALUES ($1, $2, $3)
+            ON CONFLICT (monthly_record_id, item_name) DO UPDATE SET amount = $3
+          `, [monthlyRecordId, name, value]);
           stats.costItems++;
         }
       }
@@ -136,8 +165,25 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
         const endReading = consumptionSheet.getCell(`C${row}`).value;
 
         if (areaName && startReading !== null && endReading !== null) {
-          const areaResult = await db.query('SELECT id FROM common_areas WHERE name = $1', [String(areaName)]);
-          if (areaResult.rows.length > 0) {
+          // Use fuzzy match: strip extra spaces, case-insensitive, ignore minor typos
+          // by matching on the first significant word/number token (e.g. "E26", "A02", "D23")
+          const nameStr = String(areaName).trim();
+          const token = nameStr.match(/^[A-Za-z]+\d+/)?.[0]; // e.g. "E26", "A02"
+          let areaResult;
+          if (token) {
+            areaResult = await db.query(
+              "SELECT id FROM common_areas WHERE name ILIKE $1",
+              [`${token}%`]
+            );
+          }
+          // Fallback: exact-ish match ignoring case
+          if (!areaResult || areaResult.rows.length === 0) {
+            areaResult = await db.query(
+              "SELECT id FROM common_areas WHERE LOWER(name) = LOWER($1)",
+              [nameStr]
+            );
+          }
+          if (areaResult && areaResult.rows.length > 0) {
             const consumption = (parseFloat(endReading) - parseFloat(startReading)) * 1000;
             await db.query(`
               INSERT INTO common_area_readings (monthly_record_id, common_area_id, start_reading, end_reading, consumption_litres, captured_by)
@@ -145,6 +191,9 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
               ON CONFLICT (monthly_record_id, common_area_id) DO UPDATE SET start_reading = $3, end_reading = $4, consumption_litres = $5
             `, [monthlyRecordId, areaResult.rows[0].id, startReading, endReading, consumption, req.user.id]);
             stats.commonAreas++;
+          } else {
+            stats.skipped++;
+            stats.errors.push(`Common area not found: "${nameStr}"`);
           }
         }
       }
@@ -225,6 +274,14 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       }
     }
 
+    // Recalculate cost_per_litre, total_water_input, total_water_usage and flat billing
+    let calcResult = null;
+    try {
+      calcResult = await recalculateMonthlyRecord(monthlyRecordId);
+    } catch (calcErr) {
+      console.warn('Post-import recalculation warning:', calcErr.message);
+    }
+
     // Audit log
     await db.query(
       'INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_values) VALUES ($1, $2, $3, $4, $5)',
@@ -241,6 +298,7 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
     res.json({
       message: 'Import successful',
       stats,
+      calculation: calcResult,
     });
   } catch (err) {
     console.error('Excel upload error:', err);

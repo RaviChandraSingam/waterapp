@@ -1,5 +1,8 @@
 version: '3.8'
 
+# Local development only — uses npm run dev with hot reload.
+# For production deployment, use the Dockerfiles with fly.io (see fly.toml in backend/ and web/).
+
 services:
   db:
     image: postgres:16-alpine
@@ -21,8 +24,11 @@ services:
       retries: 5
 
   backend:
-    build: ./backend
+    image: node:20-alpine
     container_name: waterapp-backend
+    working_dir: /app
+    volumes:
+      - ./backend:/app
     environment:
       DATABASE_URL: postgresql://waterapp:waterapp_secret@db:5432/waterapp
       JWT_SECRET: waterapp_jwt_secret_change_in_production
@@ -32,22 +38,21 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    volumes:
-      - ./backend/src:/app/src
-    command: npm run dev
+    command: sh -c "npm install && npm run dev"
 
   web:
-    build: ./web
+    image: node:20-alpine
     container_name: waterapp-web
+    working_dir: /app
+    volumes:
+      - ./web:/app
+    environment:
+      VITE_API_URL: http://backend:3000
     ports:
       - "5173:5173"
     depends_on:
       - backend
-    volumes:
-      - ./web/src:/app/src
-      - ./web/vite.config.js:/app/vite.config.js
-    environment:
-      VITE_API_URL: http://backend:3000
+    command: sh -c "npm install && npm run dev"
 
 volumes:
   pgdata:

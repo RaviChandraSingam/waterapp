@@ -1,0 +1,31 @@
+# fly.toml — WaterApp Backend
+# Deploy with: flyctl deploy (from the backend/ directory)
+
+app = "waterapp-backend"
+primary_region = "sin"   # Singapore — change to nearest region (e.g. "bom" for Mumbai)
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  PORT = "3000"
+  NODE_ENV = "production"
+  # DATABASE_URL is set as a secret:
+  #   flyctl secrets set DATABASE_URL="postgres://user:pass@host:5432/dbname" --app waterapp-backend
+
+[http_service]
+  internal_port = 3000
+  force_https = true
+  auto_stop_machines = true
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+[[vm]]
+  memory = "256mb"
+  cpu_kind = "shared"
+  cpus = 1

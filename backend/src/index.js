@@ -3,6 +3,8 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const db = require('./db');
 
+const { recalculateMonthlyRecord } = require('./helpers/recalculate');
+
 const authRoutes = require('./routes/auth');
 const blocksRoutes = require('./routes/blocks');
 const monthlyRecordsRoutes = require('./routes/monthlyRecords');
@@ -56,4 +58,33 @@ async function initUsers() {
 app.listen(PORT, async () => {
   console.log(`WaterApp API running on port ${PORT}`);
   await initUsers();
+  await backfillCalculations();
 });
+
+// Backfill cost_per_litre / total_water_input / total_water_usage for any
+// existing records that are missing these values.
+async function backfillCalculations() {
+  try {
+    const result = await db.query(`
+      SELECT id, year, month FROM monthly_records
+      WHERE cost_per_litre IS NULL
+         OR total_water_input IS NULL
+         OR total_water_usage IS NULL
+      ORDER BY year ASC, month ASC
+    `);
+    if (result.rows.length === 0) return;
+
+    console.log(`Backfilling calculations for ${result.rows.length} monthly record(s)...`);
+    for (const record of result.rows) {
+      try {
+        const calc = await recalculateMonthlyRecord(record.id);
+        console.log(`  ✓ ${record.year}-${String(record.month).padStart(2,'0')}: input=${calc.totalWaterInput}L, usage=${calc.totalWaterUsage}L, cost/L=${calc.costPerLitre}`);
+      } catch (err) {
+        console.warn(`  ✗ ${record.year}-${record.month}: ${err.message}`);
+      }
+    }
+    console.log('Backfill complete.');
+  } catch (err) {
+    console.warn('Backfill skipped:', err.message);
+  }
+}

@@ -125,6 +125,33 @@ export default function MonthlyRecordDetailPage() {
   const blockReadings = readings.filter(r => activeBlock && r.block_name === blocks.find(b => b.id === activeBlock)?.name);
   const blockBilling = billing.filter(b => activeBlock && b.block_name === blocks.find(bl => bl.id === activeBlock)?.name);
 
+  // Compute block totals for overview
+  const blockTotals = {};
+  billing.forEach(b => {
+    const key = b.block_display_name || b.block_name;
+    if (!blockTotals[key]) blockTotals[key] = { consumption: 0, cost: 0 };
+    blockTotals[key].consumption += Number(b.consumption_litres || 0);
+    blockTotals[key].cost += Number(b.total_cost || 0);
+  });
+  const commonUsageTotal = commonReadings.reduce((sum, cr) => sum + Number(cr.consumption_litres || 0), 0);
+  const totalUsage = Object.values(blockTotals).reduce((s, b) => s + b.consumption, 0) + commonUsageTotal;
+
+  // Separate borewell and tanker readings
+  const borewellSources = (record.water_source_readings || []).filter(r => r.source_type === 'borewell');
+  const tankerSources = (record.water_source_readings || []).filter(r => r.source_type === 'tanker');
+  const totalWaterInput = (record.water_source_readings || []).reduce((s, r) => s + Number(r.consumption_litres || 0), 0);
+
+  // Cost summary for overview
+  const STANDARD_COST_ITEMS = ['Salt', 'E Bill 1', 'E Bill 2'];
+  // Build a map by item_name (collapses any residual duplicates in display)
+  const costItemsByName = {};
+  (record.cost_items || []).forEach(ci => { costItemsByName[ci.item_name] = ci; });
+  const extraCostItems = (record.cost_items || []).filter(ci => !STANDARD_COST_ITEMS.includes(ci.item_name))
+    .filter((ci, i, arr) => arr.findIndex(x => x.item_name === ci.item_name) === i); // dedupe
+  const costItemsTotal = (record.cost_items || []).reduce((s, ci) => s + Number(ci.amount || 0), 0);
+  const tankerBillTotal = tankerSources.reduce((s, t) => s + Number(t.total_cost || 0), 0);
+  const grandTotalCost = costItemsTotal + tankerBillTotal;
+
   // Group readings by flat
   const flatReadings = {};
   blockReadings.forEach(r => {
@@ -196,32 +223,156 @@ export default function MonthlyRecordDetailPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="grid-2">
-          <div className="card">
-            <h3 style={{ marginBottom: 15 }}>Record Details</h3>
-            <table>
-              <tbody>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+
+          {/* Header row: period + workflow */}
+          <div className="grid-2">
+            <div className="card">
+              <h3 style={{ marginBottom: 12 }}>Record Details</h3>
+              <table><tbody>
                 <tr><td>Period</td><td>{record.period_start_date?.split('T')[0]} to {record.period_end_date?.split('T')[0]}</td></tr>
                 <tr><td>Mid Period</td><td>{record.mid_period_date?.split('T')[0] || '-'}</td></tr>
                 <tr><td>Status</td><td><span className={`badge badge-${record.status}`}>{record.status}</span></td></tr>
-                <tr><td>Cost per Litre</td><td>₹{Number(record.cost_per_litre || 0).toFixed(4)}</td></tr>
-                <tr><td>Total Water Input</td><td>{Number(record.total_water_input || 0).toLocaleString()} L</td></tr>
-                <tr><td>Total Water Usage</td><td>{Number(record.total_water_usage || 0).toLocaleString()} L</td></tr>
-              </tbody>
-            </table>
-          </div>
-          <div className="card">
-            <h3 style={{ marginBottom: 15 }}>Workflow</h3>
-            <table>
-              <tbody>
+              </tbody></table>
+            </div>
+            <div className="card">
+              <h3 style={{ marginBottom: 12 }}>Workflow</h3>
+              <table><tbody>
                 <tr><td>Created By</td><td>{record.created_by_name || '-'}</td></tr>
                 <tr><td>Reviewed By</td><td>{record.reviewed_by_name || '-'}</td></tr>
-                <tr><td>Reviewed At</td><td>{record.reviewed_at?.split('T')[0] || '-'}</td></tr>
                 <tr><td>Finalized By</td><td>{record.finalized_by_name || '-'}</td></tr>
-                <tr><td>Finalized At</td><td>{record.finalized_at?.split('T')[0] || '-'}</td></tr>
+              </tbody></table>
+            </div>
+          </div>
+
+          {/* Water Input */}
+          <div className="card">
+            <h3 style={{ marginBottom: 12, color: '#1a6eb5' }}>WATER INPUT</h3>
+            <table>
+              <thead>
+                <tr style={{ background: '#e8f0fe' }}>
+                  <th>Source</th>
+                  <th style={{ textAlign: 'right' }}>Start Reading / Capacity</th>
+                  <th style={{ textAlign: 'right' }}>End Reading / Count</th>
+                  <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {borewellSources.map(ws => (
+                  <tr key={ws.id}>
+                    <td>{ws.source_name}</td>
+                    <td style={{ textAlign: 'right' }}>{ws.start_reading ?? '-'}</td>
+                    <td style={{ textAlign: 'right' }}>{ws.end_reading ?? '-'}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ws.consumption_litres || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {tankerSources.map(ws => (
+                  <tr key={ws.id}>
+                    <td>{ws.source_name}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ws.capacity_litres || 12000).toLocaleString()}</td>
+                    <td style={{ textAlign: 'right' }}>{ws.unit_count ?? '-'}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ws.consumption_litres || 0).toLocaleString()}</td>
+                  </tr>
+                ))}
+                {(record.water_source_readings || []).length === 0 && (
+                  <tr><td colSpan={4} className="empty-state">No water source data yet.</td></tr>
+                )}
+                <tr style={{ background: '#f0f7ff', fontWeight: 700 }}>
+                  <td colSpan={3}>TOTAL in Ltr</td>
+                  <td style={{ textAlign: 'right' }}>{totalWaterInput.toLocaleString()}</td>
+                </tr>
               </tbody>
             </table>
           </div>
+
+          {/* Water Usage */}
+          <div className="card">
+            <h3 style={{ marginBottom: 12, color: '#1a6eb5' }}>WATER USAGE</h3>
+            <table>
+              <thead>
+                <tr style={{ background: '#e8f0fe' }}>
+                  <th>Block / Area</th>
+                  <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {Object.entries(blockTotals).sort(([a], [b]) => a.localeCompare(b)).map(([blockName, data]) => (
+                  <tr key={blockName}>
+                    <td>{blockName} Total</td>
+                    <td style={{ textAlign: 'right' }}>{data.consumption.toLocaleString()}</td>
+                  </tr>
+                ))}
+                {Object.keys(blockTotals).length === 0 && (
+                  <tr><td colSpan={2} className="empty-state">No billing data yet. Run calculation first.</td></tr>
+                )}
+                <tr>
+                  <td>Common Usage Total</td>
+                  <td style={{ textAlign: 'right' }}>{commonUsageTotal.toLocaleString()}</td>
+                </tr>
+                <tr style={{ background: '#f0f7ff', fontWeight: 700 }}>
+                  <td>TOTAL in Ltr</td>
+                  <td style={{ textAlign: 'right' }}>{totalUsage.toLocaleString()}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          {/* Cost Summary */}
+          <div className="card">
+            <h3 style={{ marginBottom: 12, color: '#1a6eb5' }}>COST SUMMARY</h3>
+            <table>
+              <thead>
+                <tr style={{ background: '#e8f0fe' }}>
+                  <th>Item</th>
+                  <th style={{ textAlign: 'right' }}>Cost (₹)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {STANDARD_COST_ITEMS.map(name => {
+                  const ci = costItemsByName[name];
+                  return (
+                    <tr key={name} style={{ color: ci ? undefined : '#aaa' }}>
+                      <td>{name}{!ci && <span style={{ fontSize: '0.8em', marginLeft: 6, fontStyle: 'italic' }}>(not billed)</span>}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {ci ? Number(ci.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {extraCostItems.map(ci => (
+                  <tr key={ci.id}>
+                    <td>{ci.item_name}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ci.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+                {tankerSources.map(ws => (
+                  <tr key={ws.id}>
+                    <td>{ws.source_name} bill</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ws.total_cost || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                  </tr>
+                ))}
+                <tr style={{ background: '#f0f7ff', fontWeight: 700 }}>
+                  <td>Total Cost</td>
+                  <td style={{ textAlign: 'right' }}>₹{grandTotalCost.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                </tr>
+                <tr style={{ background: '#fff8e1' }}>
+                  <td>
+                    <div style={{ fontWeight: 700 }}>Cost per Litre</div>
+                    <div style={{ fontSize: '0.82em', color: '#666', marginTop: 3 }}>
+                      = Total Cost ÷ Total Water Input
+                    </div>
+                    <div style={{ fontSize: '0.82em', color: '#555', marginTop: 1, fontFamily: 'monospace' }}>
+                      = ₹{grandTotalCost.toLocaleString(undefined, { maximumFractionDigits: 2 })} ÷ {totalWaterInput.toLocaleString()} L
+                    </div>
+                  </td>
+                  <td style={{ textAlign: 'right', fontWeight: 700, fontSize: '1.05em' }}>
+                    ₹{Number(record.cost_per_litre || 0).toFixed(6)}<span style={{ fontSize: '0.8em', fontWeight: 400 }}> /L</span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
         </div>
       )}
 
