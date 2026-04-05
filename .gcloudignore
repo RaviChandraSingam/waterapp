@@ -19,9 +19,11 @@ mobile/node_modules
 *.sql
 *.dump
 *.xlsx
-*.html
 *.pptx
 *.log
+
+# Keep web entry point
+!web/index.html
 
 # Misc
 .DS_Store
