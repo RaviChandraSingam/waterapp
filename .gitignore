@@ -15,6 +15,9 @@ web/.env
 web/dist/
 mobile/.expo/
 
+# Firebase build artifacts
+.firebase/
+
 # OS files
 .DS_Store
 Thumbs.db

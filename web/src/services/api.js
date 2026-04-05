@@ -31,6 +31,7 @@ export const api = {
   getMe: () => request('/auth/me'),
   getUsers: () => request('/auth/users'),
   createUser: (data) => request('/auth/users', { method: 'POST', body: JSON.stringify(data) }),
+  changePassword: (currentPassword, newPassword) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
 
   // Blocks & Flats
   getBlocks: () => request('/blocks'),

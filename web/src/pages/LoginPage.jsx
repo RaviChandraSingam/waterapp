@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const result = await api.login(username, password);
-      login(result.user, result.token);
+      login({ ...result.user, mustChangePassword: !!result.mustChangePassword }, result.token);
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {

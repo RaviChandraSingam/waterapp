@@ -1,4 +1,4 @@
-import { useState, useEffect, createContext, useContext } from 'react';
+import { useState, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { api } from './services/api';
 import LoginPage from './pages/LoginPage';
@@ -18,6 +18,7 @@ function App() {
     const saved = localStorage.getItem('user');
     return saved ? JSON.parse(saved) : null;
   });
+  const [showChangePassword, setShowChangePassword] = useState(false);
 
   const login = (userData, token) => {
     localStorage.setItem('token', token);
@@ -31,9 +32,17 @@ function App() {
     setUser(null);
   };
 
+  const updateUser = (updates) => {
+    const updated = { ...user, ...updates };
+    localStorage.setItem('user', JSON.stringify(updated));
+    setUser(updated);
+  };
+
+  const openChangePassword = () => setShowChangePassword(true);
+
   if (!user) {
     return (
-      <AuthContext.Provider value={{ user, login, logout }}>
+      <AuthContext.Provider value={{ user, login, logout, openChangePassword }}>
         <BrowserRouter>
           <Routes>
             <Route path="/login" element={<LoginPage />} />
@@ -44,8 +53,10 @@ function App() {
     );
   }
 
+  const forcedChange = !!user.mustChangePassword;
+
   return (
-    <AuthContext.Provider value={{ user, login, logout }}>
+    <AuthContext.Provider value={{ user, login, logout, openChangePassword }}>
       <BrowserRouter>
         <div className="app">
           <Sidebar />
@@ -62,13 +73,23 @@ function App() {
             </Routes>
           </div>
         </div>
+        {(forcedChange || showChangePassword) && (
+          <ChangePasswordModal
+            forced={forcedChange}
+            onClose={() => setShowChangePassword(false)}
+            onSuccess={() => {
+              updateUser({ mustChangePassword: false });
+              setShowChangePassword(false);
+            }}
+          />
+        )}
       </BrowserRouter>
     </AuthContext.Provider>
   );
 }
 
 function Sidebar() {
-  const { user, logout } = useAuth();
+  const { user, logout, openChangePassword } = useAuth();
   const location = useLocation();
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
@@ -109,9 +130,69 @@ function Sidebar() {
       <div className="sidebar-user">
         <div className="user-name">{user.fullName}</div>
         <div className="user-role">{user.role === 'watercommittee' ? 'Water Committee' : user.role}</div>
+        <button onClick={openChangePassword} style={{ marginBottom: 6 }}>Change Password</button>
         <button onClick={logout}>Logout</button>
       </div>
     </nav>
+  );
+}
+
+function ChangePasswordModal({ forced, onClose, onSuccess }) {
+  const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (form.newPassword !== form.confirmPassword) {
+      setError('New passwords do not match');
+      return;
+    }
+    setError('');
+    setLoading(true);
+    try {
+      await api.changePassword(form.currentPassword, form.newPassword);
+      onSuccess();
+    } catch (err) {
+      setError(err.message || 'Failed to update password');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal">
+        <div className="modal-header">
+          <h2>{forced ? 'Set Your Password' : 'Change Password'}</h2>
+          {!forced && <button className="modal-close" onClick={onClose}>&times;</button>}
+        </div>
+        {forced && (
+          <div className="alert" style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 4, padding: '10px 14px', marginBottom: 16 }}>
+            You must change your password before continuing.
+          </div>
+        )}
+        <form onSubmit={handleSubmit}>
+          {error && <div className="alert alert-error">{error}</div>}
+          <div className="form-group">
+            <label>Current Password</label>
+            <input type="password" value={form.currentPassword} onChange={e => setForm({ ...form, currentPassword: e.target.value })} autoFocus required />
+          </div>
+          <div className="form-group">
+            <label>New Password</label>
+            <input type="password" value={form.newPassword} onChange={e => setForm({ ...form, newPassword: e.target.value })} required />
+          </div>
+          <div className="form-group">
+            <label>Confirm New Password</label>
+            <input type="password" value={form.confirmPassword} onChange={e => setForm({ ...form, confirmPassword: e.target.value })} required />
+          </div>
+          <div className="form-actions">
+            {!forced && <button type="button" className="btn btn-secondary" onClick={onClose}>Cancel</button>}
+            <button type="submit" className="btn" disabled={loading}>{loading ? 'Updating...' : 'Update Password'}</button>
+          </div>
+        </form>
+      </div>
+    </div>
   );
 }
 

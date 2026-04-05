@@ -13,7 +13,7 @@ export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', name: '', role: 'plumber' });
+  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'plumber' });
   const [error, setError] = useState('');
 
   useEffect(() => { loadUsers(); }, []);
@@ -28,7 +28,7 @@ export default function UsersPage() {
   async function handleCreate(e) {
     e.preventDefault();
     setError('');
-    if (!form.username || !form.password || !form.name) {
+    if (!form.username || !form.password || !form.fullName) {
       setError('All fields are required');
       return;
     }
@@ -37,9 +37,9 @@ export default function UsersPage() {
       return;
     }
     try {
-      await api.createUser(form);
+      await api.createUser({ username: form.username, password: form.password, fullName: form.fullName, role: form.role });
       setShowCreate(false);
-      setForm({ username: '', password: '', name: '', role: 'plumber' });
+      setForm({ username: '', password: '', fullName: '', role: 'plumber' });
       loadUsers();
     } catch (err) {
       setError(err.message || 'Failed to create user');
@@ -69,7 +69,7 @@ export default function UsersPage() {
             {users.map(u => (
               <tr key={u.id}>
                 <td style={{ fontWeight: 600 }}>{u.username}</td>
-                <td>{u.name}</td>
+                <td>{u.full_name}</td>
                 <td>
                   <span className={`badge ${
                     u.role === 'watercommittee' ? 'badge-primary' :
@@ -126,7 +126,7 @@ export default function UsersPage() {
               </div>
               <div className="form-group">
                 <label>Full Name</label>
-                <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                <input type="text" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} />
               </div>
               <div className="form-group">
                 <label>Password</label>
