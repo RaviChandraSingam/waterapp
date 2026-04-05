@@ -1,7 +1,8 @@
 steps:
   # 1. Build & Push Backend to Cloud Run
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/water-backend', './backend']
+    args: ['build', '-t', 'gcr.io/$PROJECT_ID/water-backend', '.']
+    dir: 'backend'
   - name: 'gcr.io/cloud-builders/docker'
     args: ['push', 'gcr.io/$PROJECT_ID/water-backend']
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
