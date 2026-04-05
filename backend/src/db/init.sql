@@ -1,7 +1,7 @@
 -- WaterApp Database Schema
 
 -- Enable UUID extension
-CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
 -- ============================================================
 -- ENUM TYPES
@@ -15,7 +15,7 @@ CREATE TYPE record_status AS ENUM ('draft', 'captured', 'reviewed', 'final');
 -- ============================================================
 
 CREATE TABLE users (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     username VARCHAR(50) UNIQUE NOT NULL,
     password_hash VARCHAR(255) NOT NULL,
     full_name VARCHAR(100) NOT NULL,
@@ -30,13 +30,13 @@ CREATE TABLE users (
 -- ============================================================
 
 CREATE TABLE blocks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(10) UNIQUE NOT NULL,  -- 'A', 'B', 'C', 'D', 'E'
     display_name VARCHAR(50) NOT NULL  -- 'A Block', 'B Block', etc.
 );
 
 CREATE TABLE flats (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     block_id UUID NOT NULL REFERENCES blocks(id),
     flat_number VARCHAR(10) NOT NULL,  -- e.g., '1101', '2201'
     is_active BOOLEAN DEFAULT true,
@@ -48,7 +48,7 @@ CREATE TABLE flats (
 -- ============================================================
 
 CREATE TABLE common_areas (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,       -- 'A02 Office room'
     description VARCHAR(255),
     is_active BOOLEAN DEFAULT true
@@ -59,7 +59,7 @@ CREATE TABLE common_areas (
 -- ============================================================
 
 CREATE TABLE water_sources (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,         -- 'A block Borewell', '12000 ltrs per Tanker'
     source_type VARCHAR(20) NOT NULL,   -- 'borewell' or 'tanker'
     capacity_litres NUMERIC,            -- e.g., 12000 for tankers
@@ -72,7 +72,7 @@ CREATE TABLE water_sources (
 -- ============================================================
 
 CREATE TABLE monthly_records (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     year INT NOT NULL,
     month INT NOT NULL CHECK (month BETWEEN 1 AND 12),
     status record_status DEFAULT 'draft',
@@ -98,11 +98,12 @@ CREATE TABLE monthly_records (
 -- ============================================================
 
 CREATE TABLE cost_items (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     monthly_record_id UUID NOT NULL REFERENCES monthly_records(id) ON DELETE CASCADE,
     item_name VARCHAR(100) NOT NULL,    -- 'Salt', 'E Bill 1', etc.
     amount NUMERIC(12, 2) NOT NULL DEFAULT 0,
-    created_at TIMESTAMP DEFAULT NOW()
+    created_at TIMESTAMP DEFAULT NOW(),
+    UNIQUE(monthly_record_id, item_name)
 );
 
 -- ============================================================
@@ -110,7 +111,7 @@ CREATE TABLE cost_items (
 -- ============================================================
 
 CREATE TABLE water_source_readings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     monthly_record_id UUID NOT NULL REFERENCES monthly_records(id) ON DELETE CASCADE,
     water_source_id UUID NOT NULL REFERENCES water_sources(id),
     start_reading NUMERIC,              -- for borewells
@@ -128,7 +129,7 @@ CREATE TABLE water_source_readings (
 -- ============================================================
 
 CREATE TABLE meter_readings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     monthly_record_id UUID NOT NULL REFERENCES monthly_records(id) ON DELETE CASCADE,
     flat_id UUID NOT NULL REFERENCES flats(id),
     reading_date DATE NOT NULL,
@@ -148,7 +149,7 @@ CREATE TABLE meter_readings (
 -- ============================================================
 
 CREATE TABLE common_area_readings (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     monthly_record_id UUID NOT NULL REFERENCES monthly_records(id) ON DELETE CASCADE,
     common_area_id UUID NOT NULL REFERENCES common_areas(id),
     start_reading NUMERIC NOT NULL,
@@ -165,7 +166,7 @@ CREATE TABLE common_area_readings (
 -- ============================================================
 
 CREATE TABLE flat_billing (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     monthly_record_id UUID NOT NULL REFERENCES monthly_records(id) ON DELETE CASCADE,
     flat_id UUID NOT NULL REFERENCES flats(id),
     start_reading NUMERIC,
@@ -188,7 +189,7 @@ CREATE TABLE flat_billing (
 -- ============================================================
 
 CREATE TABLE billing_config (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     config_key VARCHAR(50) UNIQUE NOT NULL,
     config_value NUMERIC NOT NULL,
     description VARCHAR(255),
@@ -201,7 +202,7 @@ CREATE TABLE billing_config (
 -- ============================================================
 
 CREATE TABLE audit_log (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id UUID REFERENCES users(id),
     action VARCHAR(50) NOT NULL,
     entity_type VARCHAR(50) NOT NULL,

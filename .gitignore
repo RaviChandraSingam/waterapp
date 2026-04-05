@@ -30,6 +30,16 @@ npm-debug.log*
 # Database dumps
 *.sql.gz
 *.sql.dump
+*.dump
+
+# DB restore/dump SQL files (large data files, not source code)
+waterapp-fixed.sql
+waterapp-supabase-v2.sql
+waterapp-original-raw.sql
+waterapp-plain.sql
+waterapp-supabase-clean.sql
+waterapp-supabase-final.sql
+check_fk.sql
 
 # Generated files
 WaterApp-Overview.pptx
