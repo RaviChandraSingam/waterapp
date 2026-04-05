@@ -1,0 +1,29 @@
+# .gcloudignore
+.git
+.gitignore
+.venv
+node_modules
+backend/node_modules
+web/node_modules
+mobile/node_modules
+
+# Keep these even if in .gitignore
+!package.json
+!package-lock.json
+!backend/package.json
+!backend/package-lock.json
+!web/package.json
+!web/package-lock.json
+
+# Large data files to ignore
+*.sql
+*.dump
+*.xlsx
+*.html
+*.pptx
+*.log
+
+# Misc
+.DS_Store
+.vscode
+.idea
