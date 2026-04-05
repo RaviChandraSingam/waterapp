@@ -1,5 +1,15 @@
 {
   "projects": {
     "default": "waterapp-prod-492407"
-  }
+  },
+  "targets": {
+    "waterapp-prod-492407": {
+      "hosting": {
+        "main": [
+          "waterapp-prod-492407"
+        ]
+      }
+    }
+  },
+  "etags": {}
 }
