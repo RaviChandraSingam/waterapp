@@ -40,7 +40,9 @@ A complete water consumption tracking, billing, and management system for an apa
 
 ```
 waterapp/
-├── docker-compose.yml          # Orchestrates all services
+├── docker-compose.yml          # Orchestrates all services (local dev)
+├── waterapp-fixed.sql          # Canonical DB restore file (Docker)
+├── waterapp-supabase-v2.sql    # Canonical DB restore file (Supabase)
 ├── backend/                    # Node.js + Express API
 │   ├── Dockerfile
 │   ├── package.json
@@ -48,8 +50,8 @@ waterapp/
 │       ├── index.js            # Server entry point
 │       ├── db/
 │       │   ├── index.js        # PostgreSQL connection pool
-│       │   ├── init.sql        # Database schema (tables, indexes)
-│       │   └── seed.sql        # Seed data (blocks, flats, users, config)
+│       │   ├── init.sql        # Database schema (tables, indexes) — auto-run by Docker
+│       │   └── seed.sql        # Reference seed template (NOT auto-run — data comes from waterapp-fixed.sql)
 │       ├── middleware/
 │       │   └── auth.js         # JWT authentication & role authorization
 │       ├── routes/
@@ -100,8 +102,6 @@ waterapp/
 │           ├── CaptureReadingsScreen.js
 │           └── SettingsScreen.js
 └── *.xlsx                      # Original Excel data files (Nov 2025 – Feb 2026)
-├── DEPLOYMENT.md               # Production deployment guide
-└── waterapp-full-dump.sql.gz   # Full database dump (schema + all data)
 ```
 
 ---
@@ -113,10 +113,29 @@ waterapp/
 - **Docker Desktop** — [Download](https://www.docker.com/products/docker-desktop/)
 - **Node.js 20+** — [Download](https://nodejs.org/)
 
-### 1. Start everything with Docker
+### 1. Start the database
 
 ```bash
 cd /Users/Ravi/code/waterapp
+docker compose up -d db
+```
+
+### 2. Restore all data (first-time setup only)
+
+The database starts empty (just schema from `init.sql`). Restore the full dataset:
+
+```bash
+psql "postgresql://waterapp:waterapp_secret@localhost:5432/waterapp" \
+  -f waterapp-fixed.sql
+```
+
+This loads all historical data (5 months of readings, 240 flats, billing records) with FK-consistent UUIDs.
+
+> **Important:** Never run `seed.sql` after restoring — it generates new random UUIDs that break FK references in the billing data.
+
+### 3. Start all services
+
+```bash
 docker compose up -d
 ```
 
@@ -140,11 +159,11 @@ docker compose logs backend
 docker compose logs web
 ```
 
-### 3. Open the web app
+### 4. Open the web app
 
 Open your browser and go to: **http://localhost:5173**
 
-### 4. Log in
+### 5. Log in
 
 | Username | Password | Role | Access |
 |----------|----------|------|--------|
@@ -152,7 +171,7 @@ Open your browser and go to: **http://localhost:5173**
 | `accountant1` | `` | Accountant | Capture/modify readings, review, export, billing |
 | `admin1` | `` | Water Committee | Full admin |
 
-### 5. What to check in the web app
+### 6. What to check in the web app
 
 1. **Login** — Sign in as `admin1` for full access
 2. **Dashboard** — See overall stats, consumption trends, block-wise summaries
@@ -374,6 +393,9 @@ docker exec -it waterapp-db psql -U waterapp -d waterapp -c "SELECT b.display_na
 
 # Re-run the Excel data import (idempotent — uses upserts)
 cd backend && node src/scripts/importExcel.js
+
+# Restore DB from canonical dump (wipes existing data)
+psql "postgresql://waterapp:waterapp_secret@localhost:5432/waterapp" -f waterapp-fixed.sql
 ```
 
 ## Database
@@ -408,11 +430,11 @@ Slab 3:  Above 20,000 L    → cost_per_litre × 2.0
 
 | Component | Technology |
 |-----------|-----------|
-| Database | PostgreSQL 16 (Alpine) |
+| Database (local dev) | PostgreSQL 16 via Docker |
+| Database (production) | Supabase (managed PostgreSQL) |
 | Backend | Node.js 20, Express.js |
 | Web Frontend | React 18, Vite 5, React Router 6 |
 | Mobile App | Expo SDK 52, React Native |
 | Auth | JWT (24h expiry), bcrypt |
 | Excel | ExcelJS, Multer (upload) |
-| Containerization | Docker Compose |
-# waterapp
+| Containerization | Docker Compose (local), Fly.io (production) |

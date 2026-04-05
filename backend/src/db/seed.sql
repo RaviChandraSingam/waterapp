@@ -1,4 +1,12 @@
 -- WaterApp Seed Data
+--
+-- NOTE: This file is kept for reference only. It is NOT auto-run by Docker.
+-- The Docker container only runs init.sql (schema creation) on a fresh volume.
+-- All data (users, flats, blocks, billing history) is restored from waterapp-fixed.sql.
+--
+-- DO NOT mount this file in docker-compose.yml or run it after restoring waterapp-fixed.sql.
+-- Doing so generates new random UUIDs for flats/users that will break FK references
+-- in the existing billing data (flat_billing, meter_readings, etc.).
 
 -- ============================================================
 -- DEFAULT USERS (passwords are bcrypt hash of 'password123')
