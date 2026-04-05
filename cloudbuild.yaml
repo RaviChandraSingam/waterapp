@@ -30,8 +30,11 @@ steps:
     entrypoint: 'npm'
     dir: 'web'
     args: ['run', 'build']
-  - name: 'gcr.io/$PROJECT_ID/firebase'
-    args: ['deploy', '--only', 'hosting']
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: 'bash'
+    args:
+      - '-c'
+      - 'npm install -g firebase-tools && firebase deploy --only hosting --project waterapp-prod-492407 --non-interactive'
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-repo/water-backend'
