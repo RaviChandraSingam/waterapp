@@ -20,8 +20,8 @@ steps:
       - '--allow-unauthenticated'
       - '--timeout'
       - '300s'
-      - '--set-env-vars'
-      - 'DATABASE_URL=${_DATABASE_URL}'
+      - '--set-secrets'
+      - 'DATABASE_URL=DATABASE_URL:latest'
 
   # 2. Build & Deploy Frontend to Firebase Hosting
   - name: 'node:20'
@@ -42,6 +42,3 @@ steps:
 
 images:
   - 'us-central1-docker.pkg.dev/$PROJECT_ID/app-repo/water-backend'
-
-substitutions:
-  _DATABASE_URL: 'postgresql://postgres.ltpmqvpjdaskutmaijle:REDACTED@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres'
