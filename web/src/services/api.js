@@ -91,6 +91,22 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  previewExcel: async (monthlyRecordId, file) => {
+    const token = localStorage.getItem('token');
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/upload/${monthlyRecordId}/preview`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Preview failed' }));
+      throw new Error(err.error || 'Preview failed');
+    }
+    return res.json();
+  },
+
   uploadExcel: async (monthlyRecordId, file) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();
