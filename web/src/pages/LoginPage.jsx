@@ -45,10 +45,6 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-        <div style={{ marginTop: 20, fontSize: '0.8rem', color: '#999', textAlign: 'center' }}>
-          <p>Default accounts: plumber1 / accountant1 / admin1</p>
-          <p>Password: password123</p>
-        </div>
       </div>
     </div>
   );

@@ -55,8 +55,24 @@ async function initUsers() {
   }
 }
 
+async function migrateDB() {
+  try {
+    await db.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_users BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT false;
+    `);
+    await db.query(`
+      UPDATE users SET can_manage_users = true, is_superadmin = true WHERE username = 'admin1'
+    `);
+    console.log('DB migration complete');
+  } catch (err) {
+    console.log('DB migration skipped:', err.message);
+  }
+}
+
 app.listen(PORT, async () => {
   console.log(`WaterApp API running on port ${PORT}`);
+  await migrateDB();
   await initUsers();
   await backfillCalculations();
 });

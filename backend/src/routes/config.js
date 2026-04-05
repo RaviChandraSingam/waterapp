@@ -1,13 +1,17 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, authorize } = require('../middleware/auth');
+const cache = require('../cache');
 
 const router = express.Router();
 
 // GET /api/config
 router.get('/', authenticate, async (req, res) => {
   try {
+    const cached = cache.get('billing_config');
+    if (cached) return res.json(cached);
     const result = await db.query('SELECT * FROM billing_config ORDER BY config_key');
+    cache.set('billing_config', result.rows);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -37,6 +41,7 @@ router.put('/:key', authenticate, authorize('watercommittee'), async (req, res) 
       [req.user.id, 'update_config', 'billing_config', result.rows[0].id, JSON.stringify({ key: req.params.key, value })]
     );
 
+    cache.invalidate('billing_config');
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -46,7 +51,10 @@ router.put('/:key', authenticate, authorize('watercommittee'), async (req, res) 
 // GET /api/config/water-sources
 router.get('/water-sources', authenticate, async (req, res) => {
   try {
+    const cached = cache.get('water_sources');
+    if (cached) return res.json(cached);
     const result = await db.query('SELECT * FROM water_sources WHERE is_active = true ORDER BY name');
+    cache.set('water_sources', result.rows);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
@@ -66,6 +74,7 @@ router.put('/water-sources/:id', authenticate, authorize('watercommittee'), asyn
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Water source not found' });
     }
+    cache.invalidate('water_sources');
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

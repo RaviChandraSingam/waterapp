@@ -22,6 +22,8 @@ CREATE TABLE users (
     role user_role NOT NULL,
     is_active BOOLEAN DEFAULT true,
     must_change_password BOOLEAN DEFAULT false,
+    can_manage_users BOOLEAN DEFAULT false,
+    is_superadmin BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

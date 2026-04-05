@@ -15,7 +15,7 @@ router.post('/login', async (req, res) => {
     }
 
     const result = await db.query(
-      'SELECT id, username, password_hash, full_name, role, is_active, must_change_password FROM users WHERE username = $1',
+      'SELECT id, username, password_hash, full_name, role, is_active, must_change_password, can_manage_users, is_superadmin FROM users WHERE username = $1',
       [username]
     );
 
@@ -34,14 +34,16 @@ router.post('/login', async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: user.id, username: user.username, role: user.role, fullName: user.full_name },
+      { id: user.id, username: user.username, role: user.role, fullName: user.full_name,
+        canManageUsers: !!user.can_manage_users, isSuperadmin: !!user.is_superadmin },
       JWT_SECRET,
       { expiresIn: '24h' }
     );
 
     res.json({
       token,
-      user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role },
+      user: { id: user.id, username: user.username, fullName: user.full_name, role: user.role,
+              canManageUsers: !!user.can_manage_users, isSuperadmin: !!user.is_superadmin },
       mustChangePassword: user.must_change_password === true,
     });
   } catch (err) {
@@ -66,11 +68,16 @@ router.get('/me', authenticate, async (req, res) => {
   }
 });
 
-// GET /api/auth/users (admin only)
-router.get('/users', authenticate, authorize('watercommittee'), async (req, res) => {
+// GET /api/auth/users (users with can_manage_users or superadmin)
+router.get('/users', authenticate, async (req, res) => {
   try {
+    // Check permission from DB (not just JWT) for sensitive operations
+    const perm = await db.query('SELECT can_manage_users, is_superadmin FROM users WHERE id = $1', [req.user.id]);
+    if (perm.rows.length === 0 || (!perm.rows[0].can_manage_users && !perm.rows[0].is_superadmin)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     const result = await db.query(
-      'SELECT id, username, full_name, role, is_active, created_at FROM users ORDER BY created_at'
+      'SELECT id, username, full_name, role, is_active, can_manage_users, is_superadmin, created_at FROM users ORDER BY created_at'
     );
     res.json(result.rows);
   } catch (err) {
@@ -78,9 +85,13 @@ router.get('/users', authenticate, authorize('watercommittee'), async (req, res)
   }
 });
 
-// POST /api/auth/users (admin only - create user)
-router.post('/users', authenticate, authorize('watercommittee'), async (req, res) => {
+// POST /api/auth/users (users with can_manage_users or superadmin - create user)
+router.post('/users', authenticate, async (req, res) => {
   try {
+    const perm = await db.query('SELECT can_manage_users, is_superadmin FROM users WHERE id = $1', [req.user.id]);
+    if (perm.rows.length === 0 || (!perm.rows[0].can_manage_users && !perm.rows[0].is_superadmin)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
     const { username, password, fullName, role } = req.body;
     if (!username || !password || !fullName || !role) {
       return res.status(400).json({ error: 'All fields are required' });
@@ -135,6 +146,69 @@ router.post('/change-password', authenticate, async (req, res) => {
     );
 
     res.json({ message: 'Password updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// POST /api/auth/users/:id/reset-password (superadmin only)
+router.post('/users/:id/reset-password', authenticate, async (req, res) => {
+  try {
+    const perm = await db.query('SELECT is_superadmin FROM users WHERE id = $1', [req.user.id]);
+    if (perm.rows.length === 0 || !perm.rows[0].is_superadmin) {
+      return res.status(403).json({ error: 'Only superadmin can reset passwords' });
+    }
+
+    const { newPassword } = req.body;
+    if (!newPassword || newPassword.length < 8) {
+      return res.status(400).json({ error: 'New password must be at least 8 characters' });
+    }
+
+    const target = await db.query('SELECT id FROM users WHERE id = $1', [req.params.id]);
+    if (target.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    const hash = await bcrypt.hash(newPassword, 10);
+    await db.query(
+      'UPDATE users SET password_hash = $1, must_change_password = true, updated_at = NOW() WHERE id = $2',
+      [hash, req.params.id]
+    );
+
+    res.json({ message: 'Password reset successfully. User will be prompted to change it on next login.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/auth/users/:id/permissions (superadmin only — delegate can_manage_users)
+router.put('/users/:id/permissions', authenticate, async (req, res) => {
+  try {
+    const perm = await db.query('SELECT is_superadmin FROM users WHERE id = $1', [req.user.id]);
+    if (perm.rows.length === 0 || !perm.rows[0].is_superadmin) {
+      return res.status(403).json({ error: 'Only superadmin can change permissions' });
+    }
+
+    // Cannot change own superadmin permissions
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ error: 'Cannot modify your own permissions' });
+    }
+
+    const { canManageUsers } = req.body;
+    if (typeof canManageUsers !== 'boolean') {
+      return res.status(400).json({ error: 'canManageUsers must be a boolean' });
+    }
+
+    const result = await db.query(
+      'UPDATE users SET can_manage_users = $1, updated_at = NOW() WHERE id = $2 RETURNING id, username, full_name, can_manage_users',
+      [canManageUsers, req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });
   }

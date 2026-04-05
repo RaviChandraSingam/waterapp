@@ -1,13 +1,17 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate, authorize } = require('../middleware/auth');
+const cache = require('../cache');
 
 const router = express.Router();
 
 // GET /api/common-areas
 router.get('/', authenticate, async (req, res) => {
   try {
+    const cached = cache.get('common_areas');
+    if (cached) return res.json(cached);
     const result = await db.query('SELECT * FROM common_areas WHERE is_active = true ORDER BY name');
+    cache.set('common_areas', result.rows);
     res.json(result.rows);
   } catch (err) {
     res.status(500).json({ error: 'Internal server error' });

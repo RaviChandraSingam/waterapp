@@ -91,49 +91,68 @@ function App() {
 function Sidebar() {
   const { user, logout, openChangePassword } = useAuth();
   const location = useLocation();
+  const [open, setOpen] = useState(false);
 
   const isActive = (path) => location.pathname === path || location.pathname.startsWith(path + '/');
 
+  const close = () => setOpen(false);
+
   return (
-    <nav className="sidebar">
-      <div className="sidebar-header">
-        <span className="emoji">💧</span>
-        <h2>WaterApp</h2>
-      </div>
-      <div className="sidebar-nav">
-        <div className="section-title">Main</div>
-        <Link to="/" className={isActive('/') && location.pathname === '/' ? 'active' : ''}>Dashboard</Link>
-        <Link to="/records" className={isActive('/records') ? 'active' : ''}>Monthly Records</Link>
+    <>
+      {/* Hamburger button — only visible on mobile */}
+      <button className="sidebar-toggle" onClick={() => setOpen(o => !o)} aria-label="Toggle menu">
+        <span></span><span></span><span></span>
+      </button>
 
-        {(user.role === 'plumber' || user.role === 'watercommittee' || user.role === 'accountant') && (
-          <>
-            <div className="section-title">Capture</div>
-            <Link to="/capture" className={isActive('/capture') ? 'active' : ''}>Meter Readings</Link>
-          </>
-        )}
+      {/* Overlay — only on mobile when sidebar is open */}
+      {open && <div className="sidebar-overlay" onClick={close} />}
 
-        {(user.role === 'accountant' || user.role === 'watercommittee') && (
-          <>
-            <div className="section-title">Finance</div>
-            <Link to="/billing" className={isActive('/billing') ? 'active' : ''}>Billing & Reports</Link>
-          </>
-        )}
+      <nav className={`sidebar${open ? ' sidebar-open' : ''}`}>
+        <div className="sidebar-header">
+          <span className="emoji">💧</span>
+          <h2>WaterApp</h2>
+        </div>
+        <div className="sidebar-nav">
+          <div className="section-title">Main</div>
+          <Link to="/" onClick={close} className={isActive('/') && location.pathname === '/' ? 'active' : ''}>Dashboard</Link>
+          <Link to="/records" onClick={close} className={isActive('/records') ? 'active' : ''}>Monthly Records</Link>
 
-        {user.role === 'watercommittee' && (
-          <>
-            <div className="section-title">Admin</div>
-            <Link to="/config" className={isActive('/config') ? 'active' : ''}>Configuration</Link>
-            <Link to="/users" className={isActive('/users') ? 'active' : ''}>User Management</Link>
-          </>
-        )}
-      </div>
-      <div className="sidebar-user">
-        <div className="user-name">{user.fullName}</div>
-        <div className="user-role">{user.role === 'watercommittee' ? 'Water Committee' : user.role}</div>
-        <button onClick={openChangePassword} style={{ marginBottom: 6 }}>Change Password</button>
-        <button onClick={logout}>Logout</button>
-      </div>
-    </nav>
+          {(user.role === 'plumber' || user.role === 'watercommittee' || user.role === 'accountant') && (
+            <>
+              <div className="section-title">Capture</div>
+              <Link to="/capture" onClick={close} className={isActive('/capture') ? 'active' : ''}>Meter Readings</Link>
+            </>
+          )}
+
+          {(user.role === 'accountant' || user.role === 'watercommittee') && (
+            <>
+              <div className="section-title">Finance</div>
+              <Link to="/billing" onClick={close} className={isActive('/billing') ? 'active' : ''}>Billing & Reports</Link>
+            </>
+          )}
+
+          {user.role === 'watercommittee' && (
+            <>
+              <div className="section-title">Admin</div>
+              <Link to="/config" onClick={close} className={isActive('/config') ? 'active' : ''}>Configuration</Link>
+            </>
+          )}
+
+          {(user.canManageUsers || user.isSuperadmin) && (
+            <>
+              {user.role !== 'watercommittee' && <div className="section-title">Admin</div>}
+              <Link to="/users" onClick={close} className={isActive('/users') ? 'active' : ''}>User Management</Link>
+            </>
+          )}
+        </div>
+        <div className="sidebar-user">
+          <div className="user-name">{user.fullName}</div>
+          <div className="user-role">{user.role === 'watercommittee' ? 'Water Committee' : user.role}</div>
+          <button onClick={openChangePassword} style={{ marginBottom: 6 }}>Change Password</button>
+          <button onClick={logout}>Logout</button>
+        </div>
+      </nav>
+    </>
   );
 }
 

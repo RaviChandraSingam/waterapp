@@ -15,6 +15,9 @@ export default function UsersPage() {
   const [showCreate, setShowCreate] = useState(false);
   const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'plumber' });
   const [error, setError] = useState('');
+  const [resetModal, setResetModal] = useState(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState('');
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -46,6 +49,32 @@ export default function UsersPage() {
     }
   }
 
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    setResetError('');
+    if (!resetPassword || resetPassword.length < 8) {
+      setResetError('Password must be at least 8 characters');
+      return;
+    }
+    try {
+      await api.resetUserPassword(resetModal.id, resetPassword);
+      setResetModal(null);
+      setResetPassword('');
+      alert('Password reset successfully. User will be prompted to change it on next login.');
+    } catch (err) {
+      setResetError(err.message || 'Failed to reset password');
+    }
+  }
+
+  async function toggleManageUsers(userId, currentValue) {
+    try {
+      await api.updateUserPermissions(userId, !currentValue);
+      loadUsers();
+    } catch (err) {
+      alert(err.message || 'Failed to update permissions');
+    }
+  }
+
   if (loading) return <div className="card">Loading...</div>;
 
   return (
@@ -62,13 +91,15 @@ export default function UsersPage() {
               <th>Username</th>
               <th>Name</th>
               <th>Role</th>
+              {currentUser.isSuperadmin && <th>Can Manage Users</th>}
               <th>Created</th>
+              {currentUser.isSuperadmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td style={{ fontWeight: 600 }}>{u.username}</td>
+                <td style={{ fontWeight: 600 }}>{u.username}{u.is_superadmin && ' ⭐'}</td>
                 <td>{u.full_name}</td>
                 <td>
                   <span className={`badge ${
@@ -78,7 +109,35 @@ export default function UsersPage() {
                     {ROLES.find(r => r.value === u.role)?.label || u.role}
                   </span>
                 </td>
+                {currentUser.isSuperadmin && (
+                  <td>
+                    {u.is_superadmin ? (
+                      <span style={{ color: '#4caf50' }}>Always</span>
+                    ) : (
+                      <button
+                        className={`btn btn-sm ${u.can_manage_users ? 'btn-success' : 'btn-secondary'}`}
+                        onClick={() => toggleManageUsers(u.id, u.can_manage_users)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      >
+                        {u.can_manage_users ? 'Yes' : 'No'}
+                      </button>
+                    )}
+                  </td>
+                )}
                 <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                {currentUser.isSuperadmin && (
+                  <td>
+                    {!u.is_superadmin && (
+                      <button
+                        className="btn btn-sm btn-warning"
+                        onClick={() => { setResetModal(u); setResetPassword(''); setResetError(''); }}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      >
+                        Reset Password
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -105,7 +164,7 @@ export default function UsersPage() {
             <tr>
               <td><span className="badge badge-primary">Water Committee</span></td>
               <td>Full administration</td>
-              <td>All accountant abilities + sign-off billing, manage users, configure system</td>
+              <td>All accountant abilities + sign-off billing, configure system</td>
             </tr>
           </tbody>
         </table>
@@ -141,6 +200,31 @@ export default function UsersPage() {
               <div className="form-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => { setShowCreate(false); setError(''); }}>Cancel</button>
                 <button type="submit" className="btn">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {resetModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h2>Reset Password for {resetModal.full_name}</h2>
+              <button className="modal-close" onClick={() => setResetModal(null)}>&times;</button>
+            </div>
+            <form onSubmit={handleResetPassword}>
+              {resetError && <div className="alert alert-error">{resetError}</div>}
+              <p style={{ marginBottom: 12, color: '#666' }}>
+                Set a new temporary password for <strong>{resetModal.username}</strong>. They will be prompted to change it on next login.
+              </p>
+              <div className="form-group">
+                <label>New Password</label>
+                <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} autoFocus minLength={8} />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setResetModal(null)}>Cancel</button>
+                <button type="submit" className="btn">Reset Password</button>
               </div>
             </form>
           </div>
