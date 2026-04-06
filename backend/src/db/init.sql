@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ENUM TYPES
 -- ============================================================
 
-CREATE TYPE user_role AS ENUM ('plumber', 'accountant', 'watercommittee');
+CREATE TYPE user_role AS ENUM ('plumber', 'accountant', 'watercommittee', 'guest');
 CREATE TYPE record_status AS ENUM ('draft', 'captured', 'reviewed', 'final');
 
 -- ============================================================

@@ -64,6 +64,24 @@ async function migrateDB() {
     await db.query(`
       UPDATE users SET can_manage_users = true, is_superadmin = true WHERE username = 'admin1'
     `);
+    // Add guest role to enum if not present (safe: DO $$ BLOCK catches duplicate)
+    await db.query(`
+      DO $$ BEGIN
+        ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'guest';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    // Create guest user if not exists
+    const guestExists = await db.query("SELECT id FROM users WHERE username = 'guest'");
+    if (guestExists.rows.length === 0) {
+      const guestHash = await bcrypt.hash('guest', 10);
+      await db.query(
+        `INSERT INTO users (username, password_hash, full_name, role, must_change_password)
+         VALUES ('guest', $1, 'Guest', 'guest', false)`,
+        [guestHash]
+      );
+      console.log('Guest user created');
+    }
     console.log('DB migration complete');
   } catch (err) {
     console.log('DB migration skipped:', err.message);

@@ -127,7 +127,7 @@ function Sidebar() {
           {(user.role === 'accountant' || user.role === 'watercommittee') && (
             <>
               <div className="section-title">Finance</div>
-              <Link to="/billing" onClick={close} className={isActive('/billing') ? 'active' : ''}>Billing & Reports</Link>
+              <Link to="/billing" onClick={close} className={isActive('/billing') ? 'active' : ''}>Billing &amp; Reports</Link>
             </>
           )}
 
@@ -147,8 +147,10 @@ function Sidebar() {
         </div>
         <div className="sidebar-user">
           <div className="user-name">{user.fullName}</div>
-          <div className="user-role">{user.role === 'watercommittee' ? 'Water Committee' : user.role}</div>
-          <button onClick={openChangePassword} style={{ marginBottom: 6 }}>Change Password</button>
+          <div className="user-role">{user.role === 'watercommittee' ? 'Water Committee' : user.role === 'guest' ? 'Guest (Read-only)' : user.role}</div>
+          {user.role !== 'guest' && (
+            <button onClick={openChangePassword} style={{ marginBottom: 6 }}>Change Password</button>
+          )}
           <button onClick={logout}>Logout</button>
         </div>
       </nav>

@@ -96,7 +96,7 @@ router.post('/users', authenticate, async (req, res) => {
     if (!username || !password || !fullName || !role) {
       return res.status(400).json({ error: 'All fields are required' });
     }
-    if (!['plumber', 'accountant', 'watercommittee'].includes(role)) {
+    if (!['plumber', 'accountant', 'watercommittee', 'guest'].includes(role)) {
       return res.status(400).json({ error: 'Invalid role' });
     }
 

@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useAuth } from '../App';
 
 const ROLES = [
+  { value: 'guest', label: 'Guest', desc: 'Read-only view of dashboard and records' },
   { value: 'plumber', label: 'Plumber', desc: 'Capture meter readings' },
   { value: 'accountant', label: 'Accountant', desc: 'Review and modify readings, export reports' },
   { value: 'watercommittee', label: 'Water Committee', desc: 'Full admin access, sign-off billing' },
@@ -151,6 +152,11 @@ export default function UsersPage() {
             <tr><th>Role</th><th>Description</th><th>Capabilities</th></tr>
           </thead>
           <tbody>
+            <tr>
+              <td><span className="badge" style={{ background: '#9e9e9e', color: 'white' }}>Guest</span></td>
+              <td>Read-only viewer</td>
+              <td>View dashboard and monthly records only — no data entry or admin access</td>
+            </tr>
             <tr>
               <td><span className="badge badge-secondary">Plumber</span></td>
               <td>Meter reading capture</td>

@@ -45,6 +45,9 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
+        <div style={{ marginTop: 20, padding: '12px 16px', background: '#f0f7ff', borderRadius: 8, fontSize: '0.85rem', color: '#555', textAlign: 'center' }}>
+          <strong>Guest access:</strong> username <code>guest</code> / password <code>guest</code>
+        </div>
       </div>
     </div>
   );
