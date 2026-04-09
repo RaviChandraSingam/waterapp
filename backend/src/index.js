@@ -15,6 +15,7 @@ const configRoutes = require('./routes/config');
 const dashboardRoutes = require('./routes/dashboard');
 const exportRoutes = require('./routes/export');
 const uploadRoutes = require('./routes/upload');
+const pendingItemsRoutes = require('./routes/pendingItems');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +39,7 @@ app.use('/api/config', configRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/pending-items', pendingItemsRoutes);
 
 // Initialize default users with proper password hashes on startup
 async function initUsers() {
@@ -82,6 +84,31 @@ async function migrateDB() {
       );
       console.log('Guest user created');
     }
+
+    // Create pending_items table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS pending_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        title VARCHAR(200) NOT NULL,
+        category VARCHAR(50) NOT NULL DEFAULT 'general',
+        priority VARCHAR(10) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),
+        planned_period VARCHAR(50),
+        associated_cost NUMERIC(12,2),
+        recurring BOOLEAN NOT NULL DEFAULT false,
+        recurrence_pattern VARCHAR(50),
+        status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','on_hold','done','cancelled')),
+        progress_pct INT NOT NULL DEFAULT 0 CHECK (progress_pct BETWEEN 0 AND 100),
+        worked_on_by VARCHAR(100),
+        description TEXT,
+        notes TEXT,
+        due_date DATE,
+        completed_at TIMESTAMP,
+        created_by UUID REFERENCES users(id),
+        updated_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
     console.log('DB migration complete');
   } catch (err) {
     console.log('DB migration skipped:', err.message);

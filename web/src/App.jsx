@@ -9,6 +9,7 @@ import ReadingsCapturePage from './pages/ReadingsCapturePage';
 import BillingPage from './pages/BillingPage';
 import ConfigPage from './pages/ConfigPage';
 import UsersPage from './pages/UsersPage';
+import PendingItemsPage from './pages/PendingItemsPage';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
@@ -69,6 +70,7 @@ function App() {
               <Route path="/billing" element={<BillingPage />} />
               <Route path="/config" element={<ConfigPage />} />
               <Route path="/users" element={<UsersPage />} />
+              <Route path="/pending" element={<PendingItemsPage />} />
               <Route path="*" element={<Navigate to="/" />} />
             </Routes>
           </div>
@@ -116,6 +118,7 @@ function Sidebar() {
           <div className="section-title">Main</div>
           <Link to="/" onClick={close} className={isActive('/') && location.pathname === '/' ? 'active' : ''}>Dashboard</Link>
           <Link to="/records" onClick={close} className={isActive('/records') ? 'active' : ''}>Monthly Records</Link>
+          <Link to="/pending" onClick={close} className={isActive('/pending') ? 'active' : ''}>Pending Items</Link>
 
           {(user.role === 'plumber' || user.role === 'watercommittee' || user.role === 'accountant') && (
             <>

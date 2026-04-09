@@ -77,6 +77,17 @@ export const api = {
   getConsumptionTrend: () => request('/dashboard/consumption-trend'),
   getBlockConsumption: (monthlyRecordId) => request(`/dashboard/block-consumption/${monthlyRecordId}`),
 
+  // Pending Items
+  getPendingItems: (params = {}) => {
+    const qs = new URLSearchParams(Object.entries(params).filter(([,v]) => v !== undefined && v !== '')).toString();
+    return request(`/pending-items${qs ? '?' + qs : ''}`);
+  },
+  getPendingItemCategories: () => request('/pending-items/categories'),
+  getPendingItem: (id) => request(`/pending-items/${id}`),
+  createPendingItem: (data) => request('/pending-items', { method: 'POST', body: JSON.stringify(data) }),
+  updatePendingItem: (id, data) => request(`/pending-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deletePendingItem: (id) => request(`/pending-items/${id}`, { method: 'DELETE' }),
+
   // Export
   exportExcel: async (monthlyRecordId) => {
     const token = localStorage.getItem('token');
