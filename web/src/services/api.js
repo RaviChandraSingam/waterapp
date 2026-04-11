@@ -104,6 +104,21 @@ export const api = {
     URL.revokeObjectURL(url);
   },
 
+  exportBillingCSV: async (monthlyRecordId) => {
+    const token = localStorage.getItem('token');
+    const res = await fetch(`${API_BASE}/export/${monthlyRecordId}/billing-csv`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('CSV export failed');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = res.headers.get('content-disposition')?.split('filename=')[1]?.replace(/"/g, '') || 'billing.csv';
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
   previewExcel: async (monthlyRecordId, file) => {
     const token = localStorage.getItem('token');
     const formData = new FormData();
