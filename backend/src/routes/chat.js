@@ -83,20 +83,23 @@ Guidelines:
 - You can help with: understanding bills, interpreting usage trends, pending items status, and general water management advice.`;
 
     // Build contents array for Gemini multi-turn
+    // v1 API sometimes fails with system_instruction, so we prepend it as a user/model turn if needed,
+    // but here we try the standard approach first with v1 endpoint.
     const contents = [
+      { role: 'user', parts: [{ text: `SYSTEM INSTRUCTION: ${systemPrompt}\n\nUnderstood. I will follow these instructions.` }] },
+      { role: 'model', parts: [{ text: "I am ready to assist you with WaterApp data." }] },
       ...history
         .filter(h => h.role && h.text)
-        .map(h => ({ role: h.role, parts: [{ text: h.text }] })),
+        .map(h => ({ role: h.role === 'assistant' ? 'model' : h.role, parts: [{ text: h.text }] })),
       { role: 'user', parts: [{ text: message.trim() }] },
     ];
 
     const geminiRes = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          system_instruction: { parts: [{ text: systemPrompt }] },
           contents,
           generationConfig: { maxOutputTokens: 512, temperature: 0.4 },
         }),

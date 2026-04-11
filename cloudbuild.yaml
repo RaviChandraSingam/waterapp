@@ -21,7 +21,7 @@ steps:
       - '--timeout'
       - '300s'
       - '--set-secrets'
-      - 'DATABASE_URL=DATABASE_URL:latest'
+      - 'DATABASE_URL=DATABASE_URL:latest,GEMINI_API_KEY=GEMINI_API_KEY:latest'
 
   # 2. Build & Deploy Frontend to Firebase Hosting
   - name: 'node:20'
