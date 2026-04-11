@@ -11,7 +11,6 @@ import ConfigPage from './pages/ConfigPage';
 import UsersPage from './pages/UsersPage';
 import PendingItemsPage from './pages/PendingItemsPage';
 import ChatBot from './components/ChatBot';
-import ChatBot from './components/ChatBot';
 
 const AuthContext = createContext(null);
 export const useAuth = () => useContext(AuthContext);
