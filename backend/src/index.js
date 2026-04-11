@@ -85,10 +85,16 @@ async function migrateDB() {
       console.log('Guest user created');
     }
 
+    // Add seq_no to pending_items if missing
+    await db.query(`
+      ALTER TABLE pending_items ADD COLUMN IF NOT EXISTS seq_no SERIAL;
+    `);
+
     // Create pending_items table
     await db.query(`
       CREATE TABLE IF NOT EXISTS pending_items (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        seq_no SERIAL,
         title VARCHAR(200) NOT NULL,
         category VARCHAR(50) NOT NULL DEFAULT 'general',
         priority VARCHAR(10) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),

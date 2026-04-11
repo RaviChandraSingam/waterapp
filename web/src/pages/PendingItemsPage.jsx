@@ -183,11 +183,37 @@ export default function PendingItemsPage() {
 
   const activeFilters = [filterCategory, filterPriority, filterStatus, filterRecurring, search].filter(Boolean).length;
 
+  // Optional column visibility
+  const [showCols, setShowCols] = useState({ plannedPeriod: false, dueDate: false, cost: false, updatedBy: false });
+  const [showColPicker, setShowColPicker] = useState(false);
+  const COL_OPTIONS = [
+    { key: 'plannedPeriod', label: 'Planned Period' },
+    { key: 'dueDate', label: 'Due Date' },
+    { key: 'cost', label: 'Cost' },
+    { key: 'updatedBy', label: 'Updated By' },
+  ];
+
   return (
     <div>
       <div className="page-header">
         <h1>📋 Pending Items</h1>
-        {canEdit && <button className="btn" onClick={openCreate}>+ New Item</button>}
+        <div style={{ display: 'flex', gap: 8 }}>
+          <div style={{ position: 'relative' }}>
+            <button className="btn btn-secondary" onClick={() => setShowColPicker(v => !v)} style={{ fontSize: '0.85rem' }}>⚙ Columns</button>
+            {showColPicker && (
+              <div style={{ position: 'absolute', right: 0, top: '110%', background: 'white', border: '1px solid #ddd', borderRadius: 8, padding: '10px 14px', zIndex: 100, boxShadow: '0 4px 12px rgba(0,0,0,0.12)', minWidth: 160 }}>
+                <div style={{ fontSize: '0.78rem', color: '#888', marginBottom: 8, fontWeight: 600 }}>OPTIONAL COLUMNS</div>
+                {COL_OPTIONS.map(c => (
+                  <label key={c.key} style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', marginBottom: 6, fontSize: '0.88rem' }}>
+                    <input type="checkbox" checked={showCols[c.key]} onChange={() => setShowCols(prev => ({ ...prev, [c.key]: !prev[c.key] }))} />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            )}
+          </div>
+          {canEdit && <button className="btn" onClick={openCreate}>+ New Item</button>}
+        </div>
       </div>
 
       {/* Filters */}
@@ -287,24 +313,26 @@ export default function PendingItemsPage() {
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.88rem' }}>
             <thead>
               <tr style={{ background: '#f5f5f5', textAlign: 'left' }}>
-                <th style={th} onClick={() => toggleSort('title')} className="sortable">Title <SortArrow col="title" /></th>
+                <th style={{ ...th, width: 40, cursor: 'default' }} onClick={() => toggleSort('seq_no')}>#<SortArrow col="seq_no" /></th>
+                <th style={{ ...th, minWidth: 300 }} onClick={() => toggleSort('title')} className="sortable">Title <SortArrow col="title" /></th>
                 <th style={th} onClick={() => toggleSort('priority')} className="sortable">Priority <SortArrow col="priority" /></th>
                 <th style={th} onClick={() => toggleSort('status')} className="sortable">Status <SortArrow col="status" /></th>
                 <th style={th} onClick={() => toggleSort('progress_pct')} className="sortable">Progress <SortArrow col="progress_pct" /></th>
                 <th style={th}>Category</th>
-                <th style={th}>Planned Period</th>
-                <th style={th} onClick={() => toggleSort('due_date')} className="sortable">Due Date <SortArrow col="due_date" /></th>
-                <th style={th} onClick={() => toggleSort('associated_cost')} className="sortable">Cost <SortArrow col="associated_cost" /></th>
                 <th style={th}>Type</th>
-                <th style={th}>Updated by</th>
+                {showCols.plannedPeriod && <th style={th}>Planned Period</th>}
+                {showCols.dueDate && <th style={th} onClick={() => toggleSort('due_date')} className="sortable">Due Date <SortArrow col="due_date" /></th>}
+                {showCols.cost && <th style={th} onClick={() => toggleSort('associated_cost')} className="sortable">Cost <SortArrow col="associated_cost" /></th>}
+                {showCols.updatedBy && <th style={th}>Updated by</th>}
                 <th style={{ ...th, textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
               {items.map((item, i) => (
                 <tr key={item.id} style={{ borderBottom: '1px solid #eee', background: i % 2 === 0 ? 'white' : '#fafafa' }}>
-                  <td style={td}>
-                    <button onClick={() => setViewItem(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1976d2', fontWeight: 600, textAlign: 'left', padding: 0 }}>
+                  <td style={{ ...td, color: '#aaa', fontSize: '0.8rem', textAlign: 'center' }}>{item.seq_no}</td>
+                  <td style={{ ...td, minWidth: 300, maxWidth: 420 }}>
+                    <button onClick={() => setViewItem(item)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#1976d2', fontWeight: 600, textAlign: 'left', padding: 0, whiteSpace: 'normal', lineHeight: 1.4 }}>
                       {item.title}
                     </button>
                     {item.worked_on_by && <div style={{ fontSize: '0.75rem', color: '#888' }}>👤 {item.worked_on_by}</div>}
@@ -313,11 +341,11 @@ export default function PendingItemsPage() {
                   <td style={td}><StatusBadge status={item.status} /></td>
                   <td style={{ ...td, minWidth: 120 }}><ProgressBar pct={parseInt(item.progress_pct)} /></td>
                   <td style={td}><span style={{ background: '#e3f2fd', color: '#1565c0', borderRadius: 4, padding: '2px 8px', fontSize: '0.75rem' }}>{item.category}</span></td>
-                  <td style={td}>{item.planned_period || '—'}</td>
-                  <td style={td}>{item.due_date ? new Date(item.due_date).toLocaleDateString() : '—'}</td>
-                  <td style={td}>{item.associated_cost ? `₹${Number(item.associated_cost).toLocaleString()}` : '—'}</td>
                   <td style={td}>{item.recurring ? <span title={item.recurrence_pattern || ''} style={{ color: '#7b1fa2' }}>🔁 {item.recurrence_pattern || 'recurring'}</span> : 'One-time'}</td>
-                  <td style={{ ...td, fontSize: '0.78rem', color: '#888' }}>{item.updated_by_name || item.created_by_name || '—'}</td>
+                  {showCols.plannedPeriod && <td style={td}>{item.planned_period || '—'}</td>}
+                  {showCols.dueDate && <td style={td}>{item.due_date ? new Date(item.due_date).toLocaleDateString() : '—'}</td>}
+                  {showCols.cost && <td style={td}>{item.associated_cost ? `₹${Number(item.associated_cost).toLocaleString()}` : '—'}</td>}
+                  {showCols.updatedBy && <td style={{ ...td, fontSize: '0.78rem', color: '#888' }}>{item.updated_by_name || item.created_by_name || '—'}</td>}
                   <td style={{ ...td, textAlign: 'right', whiteSpace: 'nowrap' }}>
                     {canEdit && (
                       <button className="btn btn-sm" style={{ fontSize: '0.78rem', padding: '3px 10px', marginRight: 4 }} onClick={() => openEdit(item)}>Edit</button>

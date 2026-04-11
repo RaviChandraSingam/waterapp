@@ -4,7 +4,7 @@ const { authenticate, authorize } = require('../middleware/auth');
 
 const router = express.Router();
 
-const ALLOWED_SORT = ['created_at', 'updated_at', 'priority', 'status', 'due_date', 'planned_period', 'title', 'progress_pct', 'associated_cost'];
+const ALLOWED_SORT = ['created_at', 'updated_at', 'priority', 'status', 'due_date', 'planned_period', 'title', 'progress_pct', 'associated_cost', 'seq_no'];
 const PRIORITY_ORDER = `CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 WHEN 'low' THEN 4 END`;
 
 // GET /api/pending-items
