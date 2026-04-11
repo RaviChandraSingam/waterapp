@@ -16,6 +16,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const exportRoutes = require('./routes/export');
 const uploadRoutes = require('./routes/upload');
 const pendingItemsRoutes = require('./routes/pendingItems');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -40,6 +41,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/pending-items', pendingItemsRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Initialize default users with proper password hashes on startup
 async function initUsers() {

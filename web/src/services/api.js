@@ -88,6 +88,9 @@ export const api = {
   updatePendingItem: (id, data) => request(`/pending-items/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deletePendingItem: (id) => request(`/pending-items/${id}`, { method: 'DELETE' }),
 
+  // Chat / AI assistant
+  chat: (message, history = []) => request('/chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
+
   // Export
   exportExcel: async (monthlyRecordId) => {
     const token = localStorage.getItem('token');
