@@ -91,6 +91,10 @@ export const api = {
   // Chat / AI assistant
   chat: (message, history = []) => request('/chat', { method: 'POST', body: JSON.stringify({ message, history }) }),
 
+  // Analytics
+  trackPage: (page) => request('/analytics/track', { method: 'POST', body: JSON.stringify({ page }) }),
+  getAnalyticsSummary: () => request('/analytics/summary'),
+
   // Export
   exportExcel: async (monthlyRecordId) => {
     const token = localStorage.getItem('token');

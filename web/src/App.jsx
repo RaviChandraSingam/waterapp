@@ -1,4 +1,4 @@
-import { useState, createContext, useContext } from 'react';
+import { useState, useEffect, createContext, useContext } from 'react';
 import { BrowserRouter, Routes, Route, Navigate, Link, useLocation } from 'react-router-dom';
 import { api } from './services/api';
 import LoginPage from './pages/LoginPage';
@@ -62,6 +62,7 @@ function App() {
       <BrowserRouter>
         <div className="app">
           <Sidebar />
+          <PageTracker />
           <div className="main-content">
             <Routes>
               <Route path="/" element={<DashboardPage />} />
@@ -90,6 +91,14 @@ function App() {
       </BrowserRouter>
     </AuthContext.Provider>
   );
+}
+
+function PageTracker() {
+  const location = useLocation();
+  useEffect(() => {
+    api.trackPage(location.pathname).catch(() => {});
+  }, [location.pathname]);
+  return null;
 }
 
 function Sidebar() {

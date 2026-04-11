@@ -17,6 +17,7 @@ const exportRoutes = require('./routes/export');
 const uploadRoutes = require('./routes/upload');
 const pendingItemsRoutes = require('./routes/pendingItems');
 const chatRoutes = require('./routes/chat');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -42,6 +43,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/pending-items', pendingItemsRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Initialize default users with proper password hashes on startup
 async function initUsers() {
@@ -117,6 +119,18 @@ async function migrateDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    // Create page_visits table for analytics
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS page_visits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        page VARCHAR(50) NOT NULL,
+        visited_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_page_visits_date ON page_visits(visited_at);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_page_visits_page ON page_visits(page);`);
+
     console.log('DB migration complete');
   } catch (err) {
     console.log('DB migration skipped:', err.message);
