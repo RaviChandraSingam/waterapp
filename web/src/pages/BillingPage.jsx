@@ -46,7 +46,7 @@ export default function BillingPage() {
               Download Excel
             </button>
             <button className="btn btn-secondary" onClick={() => api.exportBillingCSV(selectedRecord)}>
-              Download CSV
+              Download Billing CSV
             </button>
           </>
         )}
