@@ -13,12 +13,12 @@ function getCellResult(cell) {
   if (cell === null || cell === undefined) return null;
   if (typeof cell === 'object' && 'result' in cell) return parseFloat(cell.result);
   if (typeof cell === 'number') return cell;
+  if (typeof cell === 'string' && !isNaN(parseFloat(cell))) return parseFloat(cell);
   return null;
 }
 
 const BLOCK_MAP = {
   'A block': 'a0000000-0000-0000-0000-000000000001',
-  'B block ': 'a0000000-0000-0000-0000-000000000002',
   'B block': 'a0000000-0000-0000-0000-000000000002',
   'C block': 'a0000000-0000-0000-0000-000000000003',
   'D block': 'a0000000-0000-0000-0000-000000000004',
@@ -199,7 +199,7 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
     const stats = { readingsImported: 0, blocksProcessed: 0, skipped: 0, errors: [], waterSources: 0, costItems: 0, commonAreas: 0 };
 
     // Import summary sheet data if present
-    const summarySheet = workbook.getWorksheet('summary');
+    const summarySheet = workbook.worksheets.find(s => s.name.toLowerCase().trim() === 'summary');
     if (summarySheet) {
       // Update period dates if available
       const startDateCell = summarySheet.getCell('B2').value;
@@ -217,12 +217,12 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       // Import borewell readings
       const sourceNames = { 3: 'Ablock New Borewell', 4: 'A block Borewell', 5: 'C block Borewell', 6: 'D block Borewell' };
       for (const [row, sourceName] of Object.entries(sourceNames)) {
-        const startReading = summarySheet.getCell(`B${row}`).value;
-        const endReading = summarySheet.getCell(`C${row}`).value;
+        const startReading = getCellResult(summarySheet.getCell(`B${row}`).value);
+        const endReading = getCellResult(summarySheet.getCell(`C${row}`).value);
         if (startReading !== null && endReading !== null) {
-          const sourceResult = await client.query('SELECT id FROM water_sources WHERE name = $1', [sourceName]);
+          const sourceResult = await client.query('SELECT id FROM water_sources WHERE name ILIKE $1', [sourceName]);
           if (sourceResult.rows.length > 0) {
-            const consumption = (parseFloat(endReading) - parseFloat(startReading)) * 1000;
+            const consumption = (endReading - startReading) * 1000;
             await client.query(`
               INSERT INTO water_source_readings (monthly_record_id, water_source_id, start_reading, end_reading, consumption_litres, total_cost)
               VALUES ($1, $2, $3, $4, $5, 0)
@@ -250,6 +250,7 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
         return null;
       };
 
+      // Detect tanker counts by label (rows 7–8) — handles row-order changes and old/new Excel formats
       let regularCount = null, kaveriCount = null;
       for (let r = 7; r <= 8; r++) {
         const label = summarySheet.getCell(`A${r}`).value;
@@ -294,6 +295,7 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
         }
       }
 
+      // Dynamically scan all rows after the water sources section for cost items
       const SKIP_LABELS = /total|input|usage|water|borewell|tanker|kaveri|consumption|items|cost per|block|common|^[a-e]\s+block/i;
       for (let row = 9; row <= summarySheet.rowCount; row++) {
         const label = summarySheet.getCell(`A${row}`).value;
@@ -311,22 +313,22 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       }
     }
 
-    // Import common area readings
-    const consumptionSheet = workbook.getWorksheet('consumption');
+    // Import common area readings if consumption sheet exists
+    const consumptionSheet = workbook.worksheets.find(s => s.name.toLowerCase().trim() === 'consumption');
     if (consumptionSheet) {
       // Pre-fetch all common areas for faster lookup
       const areasResult = await client.query('SELECT id, name FROM common_areas');
       const areas = areasResult.rows;
 
-      for (let row = 2; row <= 7; row++) {
+      for (let row = 2; row <= 10; row++) {
         const areaName = consumptionSheet.getCell(`A${row}`).value;
-        const startReading = consumptionSheet.getCell(`B${row}`).value;
-        const endReading = consumptionSheet.getCell(`C${row}`).value;
+        const startReading = getCellResult(consumptionSheet.getCell(`B${row}`).value);
+        const endReading = getCellResult(consumptionSheet.getCell(`C${row}`).value);
 
         if (areaName && startReading !== null && endReading !== null) {
           const nameStr = String(areaName).trim().toLowerCase();
           const token = nameStr.match(/^[a-z]+\d+/)?.[0];
-          
+
           let areaId = null;
           if (token) {
             const match = areas.find(a => a.name.toLowerCase().startsWith(token));
@@ -338,7 +340,7 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
           }
 
           if (areaId) {
-            const consumption = (parseFloat(endReading) - parseFloat(startReading)) * 1000;
+            const consumption = (endReading - startReading) * 1000;
             await client.query(`
               INSERT INTO common_area_readings (monthly_record_id, common_area_id, start_reading, end_reading, consumption_litres, captured_by)
               VALUES ($1, $2, $3, $4, $5, $6)
@@ -347,19 +349,21 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
             stats.commonAreas++;
           } else {
             stats.skipped++;
-            stats.errors.push(`Common area not found: "${areaName}"`);
+            stats.errors.push(`Common area not found: "${areaName}" at row ${row}`);
           }
         }
       }
     }
 
-    const startDate = record.period_start_date;
-    const endDate = record.period_end_date;
-    const midDate = record.mid_period_date;
+    // Re-fetch dates to pick up any updates written from the Excel summary sheet
+    const updatedRec = await client.query('SELECT * FROM monthly_records WHERE id = $1', [monthlyRecordId]);
+    const startDate = updatedRec.rows[0].period_start_date;
+    const endDate = updatedRec.rows[0].period_end_date;
+    const midDate = updatedRec.rows[0].mid_period_date;
 
     let effectiveMidDate = midDate;
     if (!effectiveMidDate) {
-      const aBlockSheet = workbook.getWorksheet('A block');
+      const aBlockSheet = workbook.worksheets.find(s => s.name.toLowerCase().trim() === 'a block');
       if (aBlockSheet) {
         const midCell = aBlockSheet.getCell('C2').value;
         effectiveMidDate = parseDate(midCell);
@@ -369,9 +373,9 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       }
     }
 
-    // Import block sheets with optimized flat lookups
-    for (const [sheetName, blockId] of Object.entries(BLOCK_MAP)) {
-      const sheet = workbook.getWorksheet(sheetName);
+    // Import block sheets with case-insensitive sheet matching and optimized flat lookups
+    for (const [blockName, blockId] of Object.entries(BLOCK_MAP)) {
+      const sheet = workbook.worksheets.find(s => s.name.toLowerCase().trim() === blockName.toLowerCase().trim());
       if (!sheet) continue;
 
       // Pre-fetch all flats for this block
@@ -381,42 +385,44 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
 
       let blockCount = 0;
       for (let row = 3; row <= sheet.rowCount; row++) {
-        const flatNumber = sheet.getCell(`A${row}`).value;
-        if (!flatNumber || String(flatNumber).trim() === '' || String(flatNumber).toLowerCase().includes('total')) continue;
+        const flatNumberRaw = sheet.getCell(`A${row}`).value;
+        if (!flatNumberRaw) continue;
+        const flatNumber = String(flatNumberRaw).trim();
+        if (flatNumber === '' || flatNumber.toLowerCase().includes('total')) continue;
 
         const flatId = flatMap[String(flatNumber).trim()];
         if (!flatId) {
           stats.skipped++;
-          stats.errors.push(`Flat ${flatNumber} not found in ${sheetName}`);
+          stats.errors.push(`Flat ${flatNumber} not found in ${blockName}`);
           continue;
         }
 
-        const reading1 = sheet.getCell(`B${row}`).value;
-        const reading2 = sheet.getCell(`C${row}`).value;
-        const reading3 = sheet.getCell(`D${row}`).value;
+        const reading1 = getCellResult(sheet.getCell(`B${row}`).value);
+        const reading2 = getCellResult(sheet.getCell(`C${row}`).value);
+        const reading3 = getCellResult(sheet.getCell(`D${row}`).value);
 
-        if (reading1 !== null && reading1 !== '' && typeof reading1 === 'number') {
+        if (reading1 !== null) {
           await client.query(`
             INSERT INTO meter_readings (monthly_record_id, flat_id, reading_date, reading_value, reading_sequence, captured_by)
             VALUES ($1, $2, $3, $4, 1, $5)
             ON CONFLICT (monthly_record_id, flat_id, reading_sequence) DO UPDATE SET reading_value = $4, captured_by = $5, updated_at = NOW()
-          `, [monthlyRecordId, flatId, startDate, parseFloat(reading1), req.user.id]);
+          `, [monthlyRecordId, flatId, startDate, reading1, req.user.id]);
           blockCount++;
         }
-        if (reading2 !== null && reading2 !== '' && typeof reading2 === 'number') {
+        if (reading2 !== null) {
           await client.query(`
             INSERT INTO meter_readings (monthly_record_id, flat_id, reading_date, reading_value, reading_sequence, captured_by)
             VALUES ($1, $2, $3, $4, 2, $5)
             ON CONFLICT (monthly_record_id, flat_id, reading_sequence) DO UPDATE SET reading_value = $4, captured_by = $5, updated_at = NOW()
-          `, [monthlyRecordId, flatId, effectiveMidDate || endDate, parseFloat(reading2), req.user.id]);
+          `, [monthlyRecordId, flatId, effectiveMidDate || endDate, reading2, req.user.id]);
           blockCount++;
         }
-        if (reading3 !== null && reading3 !== '' && typeof reading3 === 'number') {
+        if (reading3 !== null) {
           await client.query(`
             INSERT INTO meter_readings (monthly_record_id, flat_id, reading_date, reading_value, reading_sequence, captured_by)
             VALUES ($1, $2, $3, $4, 3, $5)
             ON CONFLICT (monthly_record_id, flat_id, reading_sequence) DO UPDATE SET reading_value = $4, captured_by = $5, updated_at = NOW()
-          `, [monthlyRecordId, flatId, endDate, parseFloat(reading3), req.user.id]);
+          `, [monthlyRecordId, flatId, endDate, reading3, req.user.id]);
           blockCount++;
         }
       }
