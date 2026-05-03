@@ -84,7 +84,40 @@ router.post('/', authenticate, authorize('accountant', 'watercommittee'), async 
       RETURNING *
     `, [year, month, periodStartDate, periodEndDate, midPeriodDate || null, notes || null, req.user.id]);
 
-    res.status(201).json(result.rows[0]);
+    const newRecord = result.rows[0];
+
+    // Auto-populate start readings (sequence 1) from the previous month's closing readings (sequence 3)
+    try {
+      const prevRec = await db.query(
+        `SELECT id FROM monthly_records
+         WHERE (year < $1 OR (year = $1 AND month < $2))
+         ORDER BY year DESC, month DESC LIMIT 1`,
+        [year, month]
+      );
+
+      if (prevRec.rows.length > 0) {
+        const prevId = prevRec.rows[0].id;
+        // Get the highest-sequence reading per flat from the previous month
+        const prevReadings = await db.query(`
+          SELECT DISTINCT ON (flat_id) flat_id, reading_value, reading_date
+          FROM meter_readings
+          WHERE monthly_record_id = $1
+          ORDER BY flat_id, reading_sequence DESC
+        `, [prevId]);
+
+        for (const pr of prevReadings.rows) {
+          await db.query(`
+            INSERT INTO meter_readings (monthly_record_id, flat_id, reading_date, reading_value, reading_sequence, captured_by, has_warning, warning_message)
+            VALUES ($1, $2, $3, $4, 1, $5, false, NULL)
+            ON CONFLICT (monthly_record_id, flat_id, reading_sequence) DO NOTHING
+          `, [newRecord.id, pr.flat_id, pr.reading_date, pr.reading_value, req.user.id]);
+        }
+      }
+    } catch (autoPopErr) {
+      console.error('Auto-populate start readings error (non-fatal):', autoPopErr);
+    }
+
+    res.status(201).json(newRecord);
   } catch (err) {
     if (err.code === '23505') {
       return res.status(409).json({ error: 'A record for this month/year already exists' });

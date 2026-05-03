@@ -12,7 +12,7 @@ export default function ReadingsCapturePage() {
   const [selectedRecord, setSelectedRecord] = useState('');
   const [selectedBlock, setSelectedBlock] = useState('');
   const [selectedFlat, setSelectedFlat] = useState('');
-  const [readingSequence, setReadingSequence] = useState(1);
+  const [readingSequence, setReadingSequence] = useState(2);
   const [readingDate, setReadingDate] = useState(new Date().toISOString().split('T')[0]);
   const [readingValues, setReadingValues] = useState({});
   const [existingReadings, setExistingReadings] = useState([]);
@@ -29,7 +29,7 @@ export default function ReadingsCapturePage() {
   const [prevMonthReadings, setPrevMonthReadings] = useState([]);
 
   const recordObj = records.find(r => r.id === selectedRecord);
-  const isEditable = recordObj && recordObj.status !== 'reviewed' && recordObj.status !== 'final';
+  const isEditable = recordObj && recordObj.status !== 'final';
   const canEdit = user.role === 'accountant' || user.role === 'watercommittee';
 
   useEffect(() => {
@@ -213,7 +213,6 @@ export default function ReadingsCapturePage() {
           <div className="form-group">
             <label>Reading Sequence</label>
             <select value={readingSequence} onChange={e => setReadingSequence(parseInt(e.target.value))}>
-              <option value={1}>Reading 1 (Start of Month)</option>
               <option value={2}>Reading 2 (Mid Month)</option>
               <option value={3}>Reading 3 (End of Month)</option>
             </select>
@@ -257,7 +256,7 @@ export default function ReadingsCapturePage() {
 
         {recordObj && !isEditable && (
           <div className="alert alert-warning" style={{ marginTop: 12 }}>
-            This record is in <strong>{recordObj.status}</strong> status. Readings cannot be added or modified.
+            This record is in <strong>Final</strong> status. Readings cannot be added or modified.
           </div>
         )}
       </div>
