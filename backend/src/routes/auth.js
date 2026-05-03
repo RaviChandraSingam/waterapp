@@ -214,4 +214,32 @@ router.put('/users/:id/permissions', authenticate, async (req, res) => {
   }
 });
 
+// PUT /api/auth/users/:id/name (users with can_manage_users or superadmin)
+router.put('/users/:id/name', authenticate, async (req, res) => {
+  try {
+    const perm = await db.query('SELECT can_manage_users, is_superadmin FROM users WHERE id = $1', [req.user.id]);
+    if (perm.rows.length === 0 || (!perm.rows[0].can_manage_users && !perm.rows[0].is_superadmin)) {
+      return res.status(403).json({ error: 'Insufficient permissions' });
+    }
+
+    const { fullName } = req.body;
+    if (!fullName || !fullName.trim()) {
+      return res.status(400).json({ error: 'Full name is required' });
+    }
+
+    const result = await db.query(
+      'UPDATE users SET full_name = $1, updated_at = NOW() WHERE id = $2 RETURNING id, username, full_name',
+      [fullName.trim(), req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

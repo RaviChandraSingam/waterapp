@@ -19,6 +19,9 @@ export default function UsersPage() {
   const [resetModal, setResetModal] = useState(null);
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState('');
+  const [editNameModal, setEditNameModal] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editNameError, setEditNameError] = useState('');
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -67,6 +70,23 @@ export default function UsersPage() {
     }
   }
 
+  async function handleEditName(e) {
+    e.preventDefault();
+    setEditNameError('');
+    if (!editName.trim()) {
+      setEditNameError('Full name is required');
+      return;
+    }
+    try {
+      await api.updateUserName(editNameModal.id, editName.trim());
+      setEditNameModal(null);
+      setEditName('');
+      loadUsers();
+    } catch (err) {
+      setEditNameError(err.message || 'Failed to update name');
+    }
+  }
+
   async function toggleManageUsers(userId, currentValue) {
     try {
       await api.updateUserPermissions(userId, !currentValue);
@@ -94,7 +114,7 @@ export default function UsersPage() {
               <th>Role</th>
               {currentUser.isSuperadmin && <th>Can Manage Users</th>}
               <th>Created</th>
-              {currentUser.isSuperadmin && <th>Actions</th>}
+              {(currentUser.canManageUsers || currentUser.isSuperadmin) && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
@@ -126,9 +146,16 @@ export default function UsersPage() {
                   </td>
                 )}
                 <td>{new Date(u.created_at).toLocaleDateString()}</td>
-                {currentUser.isSuperadmin && (
-                  <td>
-                    {!u.is_superadmin && (
+                {(currentUser.canManageUsers || currentUser.isSuperadmin) && (
+                  <td style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
+                    <button
+                      className="btn btn-sm btn-secondary"
+                      onClick={() => { setEditNameModal(u); setEditName(u.full_name); setEditNameError(''); }}
+                      style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                    >
+                      Edit Name
+                    </button>
+                    {currentUser.isSuperadmin && !u.is_superadmin && (
                       <button
                         className="btn btn-sm btn-warning"
                         onClick={() => { setResetModal(u); setResetPassword(''); setResetError(''); }}
@@ -206,6 +233,33 @@ export default function UsersPage() {
               <div className="form-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => { setShowCreate(false); setError(''); }}>Cancel</button>
                 <button type="submit" className="btn">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {editNameModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h2>Edit Name for {editNameModal.username}</h2>
+              <button className="modal-close" onClick={() => setEditNameModal(null)}>&times;</button>
+            </div>
+            <form onSubmit={handleEditName}>
+              {editNameError && <div className="alert alert-error">{editNameError}</div>}
+              <div className="form-group">
+                <label>Full Name</label>
+                <input
+                  type="text"
+                  value={editName}
+                  onChange={e => setEditName(e.target.value)}
+                  autoFocus
+                />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setEditNameModal(null)}>Cancel</button>
+                <button type="submit" className="btn">Save</button>
               </div>
             </form>
           </div>

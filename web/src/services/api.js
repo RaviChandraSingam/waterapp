@@ -34,6 +34,7 @@ export const api = {
   changePassword: (currentPassword, newPassword) => request('/auth/change-password', { method: 'POST', body: JSON.stringify({ currentPassword, newPassword }) }),
   resetUserPassword: (userId, newPassword) => request(`/auth/users/${userId}/reset-password`, { method: 'POST', body: JSON.stringify({ newPassword }) }),
   updateUserPermissions: (userId, canManageUsers) => request(`/auth/users/${userId}/permissions`, { method: 'PUT', body: JSON.stringify({ canManageUsers }) }),
+  updateUserName: (userId, fullName) => request(`/auth/users/${userId}/name`, { method: 'PUT', body: JSON.stringify({ fullName }) }),
 
   // Blocks & Flats
   getBlocks: () => request('/blocks'),
