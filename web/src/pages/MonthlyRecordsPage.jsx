@@ -74,10 +74,16 @@ export default function MonthlyRecordsPage() {
                   <td>
                     <Link to={`/records/${r.id}`} className="btn btn-sm btn-secondary">View</Link>
                     {canExport && r.status !== 'draft' && (
-                      <button className="btn btn-sm btn-success" style={{ marginLeft: 5 }}
-                        onClick={() => api.exportExcel(r.id).catch(err => alert(err.message))}>
-                        Excel
-                      </button>
+                      <>
+                        <button className="btn btn-sm btn-success" style={{ marginLeft: 5 }}
+                          onClick={() => api.exportExcel(r.id).catch(err => alert(err.message))}>
+                          Excel
+                        </button>
+                        <button className="btn btn-sm btn-secondary" style={{ marginLeft: 5 }}
+                          onClick={() => api.exportBillingCSV(r.id).catch(err => alert(err.message))}>
+                          Billing CSV
+                        </button>
+                      </>
                     )}
                   </td>
                 </tr>

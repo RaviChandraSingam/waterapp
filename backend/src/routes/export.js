@@ -187,4 +187,56 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
   }
 });
 
+// GET /api/export/:monthlyRecordId/billing-csv
+// Produces a society-app-compatible CSV: title row, header row, one row per flat (all blocks)
+router.get('/:monthlyRecordId/billing-csv', authenticate, authorize('accountant', 'watercommittee'), async (req, res) => {
+  try {
+    const recordResult = await db.query('SELECT * FROM monthly_records WHERE id = $1', [req.params.monthlyRecordId]);
+    if (recordResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Monthly record not found' });
+    }
+
+    const record = recordResult.rows[0];
+    const MONTH_NAMES_FULL = ['', 'January', 'February', 'March', 'April', 'May', 'June',
+      'July', 'August', 'September', 'October', 'November', 'December'];
+    const monthLabel = `${MONTH_NAMES_FULL[record.month]} ${record.year}`;
+    const filename = `Monthly Water Usage Charges_${MONTH_NAMES_FULL[record.month]} ${record.year}.csv`;
+
+    // Fetch all flat billing for this monthly record, ordered by block name then flat number
+    const billing = await db.query(`
+      SELECT
+        b.display_name AS block_name,
+        f.flat_number,
+        COALESCE(fb.total_cost, 0) AS total_cost
+      FROM flats f
+      JOIN blocks b ON f.block_id = b.id
+      LEFT JOIN flat_billing fb ON fb.flat_id = f.id AND fb.monthly_record_id = $1
+      WHERE f.is_active = true
+      ORDER BY b.name, f.flat_number
+    `, [req.params.monthlyRecordId]);
+
+    // Build CSV rows
+    const rows = [];
+    // Row 1: title (matches society app import format)
+    rows.push(`,Water Usage ${monthLabel} (ID:${record.id.replace(/-/g, '').slice(0, 6).toUpperCase()}),,`);
+    // Row 2: column headers
+    rows.push('House No.,Item Amount,Credit Amount (if applicable),Description (optional)');
+    // Data rows
+    billing.rows.forEach(row => {
+      const houseNo = `${row.block_name}-${row.flat_number}`;
+      const amount = Math.round(Number(row.total_cost));
+      rows.push(`${houseNo},${amount},0,`);
+    });
+
+    const csv = rows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (err) {
+    console.error('CSV export error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

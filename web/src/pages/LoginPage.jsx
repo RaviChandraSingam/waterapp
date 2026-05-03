@@ -15,7 +15,7 @@ export default function LoginPage() {
     setLoading(true);
     try {
       const result = await api.login(username, password);
-      login(result.user, result.token);
+      login({ ...result.user, mustChangePassword: !!result.mustChangePassword }, result.token);
     } catch (err) {
       setError(err.message || 'Login failed');
     } finally {
@@ -45,9 +45,8 @@ export default function LoginPage() {
             {loading ? 'Signing in...' : 'Sign In'}
           </button>
         </form>
-        <div style={{ marginTop: 20, fontSize: '0.8rem', color: '#999', textAlign: 'center' }}>
-          <p>Default accounts: plumber1 / accountant1 / admin1</p>
-          <p>Password: password123</p>
+        <div style={{ marginTop: 20, padding: '12px 16px', background: '#f0f7ff', borderRadius: 8, fontSize: '0.85rem', color: '#555', textAlign: 'center' }}>
+          <strong>Guest access:</strong> username <code>guest</code> / password <code>guest</code>
         </div>
       </div>
     </div>

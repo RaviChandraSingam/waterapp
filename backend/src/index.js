@@ -15,6 +15,9 @@ const configRoutes = require('./routes/config');
 const dashboardRoutes = require('./routes/dashboard');
 const exportRoutes = require('./routes/export');
 const uploadRoutes = require('./routes/upload');
+const pendingItemsRoutes = require('./routes/pendingItems');
+const chatRoutes = require('./routes/chat');
+const analyticsRoutes = require('./routes/analytics');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -38,6 +41,9 @@ app.use('/api/config', configRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
+app.use('/api/pending-items', pendingItemsRoutes);
+app.use('/api/chat', chatRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // Initialize default users with proper password hashes on startup
 async function initUsers() {
@@ -55,8 +61,85 @@ async function initUsers() {
   }
 }
 
+async function migrateDB() {
+  try {
+    await db.query(`
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_users BOOLEAN DEFAULT false;
+      ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT false;
+    `);
+    await db.query(`
+      UPDATE users SET can_manage_users = true, is_superadmin = true WHERE username = 'admin1'
+    `);
+    // Add guest role to enum if not present (safe: DO $$ BLOCK catches duplicate)
+    await db.query(`
+      DO $$ BEGIN
+        ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'guest';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$;
+    `);
+    // Create guest user if not exists
+    const guestExists = await db.query("SELECT id FROM users WHERE username = 'guest'");
+    if (guestExists.rows.length === 0) {
+      const guestHash = await bcrypt.hash('guest', 10);
+      await db.query(
+        `INSERT INTO users (username, password_hash, full_name, role, must_change_password)
+         VALUES ('guest', $1, 'Guest', 'guest', false)`,
+        [guestHash]
+      );
+      console.log('Guest user created');
+    }
+
+    // Add seq_no to pending_items if missing
+    await db.query(`
+      ALTER TABLE pending_items ADD COLUMN IF NOT EXISTS seq_no SERIAL;
+    `);
+
+    // Create pending_items table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS pending_items (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        seq_no SERIAL,
+        title VARCHAR(200) NOT NULL,
+        category VARCHAR(50) NOT NULL DEFAULT 'general',
+        priority VARCHAR(10) NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','critical')),
+        planned_period VARCHAR(50),
+        associated_cost NUMERIC(12,2),
+        recurring BOOLEAN NOT NULL DEFAULT false,
+        recurrence_pattern VARCHAR(50),
+        status VARCHAR(20) NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','on_hold','done','cancelled')),
+        progress_pct INT NOT NULL DEFAULT 0 CHECK (progress_pct BETWEEN 0 AND 100),
+        worked_on_by VARCHAR(100),
+        description TEXT,
+        notes TEXT,
+        due_date DATE,
+        completed_at TIMESTAMP,
+        created_by UUID REFERENCES users(id),
+        updated_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Create page_visits table for analytics
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS page_visits (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        page VARCHAR(50) NOT NULL,
+        visited_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_page_visits_date ON page_visits(visited_at);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_page_visits_page ON page_visits(page);`);
+
+    console.log('DB migration complete');
+  } catch (err) {
+    console.log('DB migration skipped:', err.message);
+  }
+}
+
 app.listen(PORT, async () => {
   console.log(`WaterApp API running on port ${PORT}`);
+  await migrateDB();
   await initUsers();
   await backfillCalculations();
 });

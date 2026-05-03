@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 -- ENUM TYPES
 -- ============================================================
 
-CREATE TYPE user_role AS ENUM ('plumber', 'accountant', 'watercommittee');
+CREATE TYPE user_role AS ENUM ('plumber', 'accountant', 'watercommittee', 'guest');
 CREATE TYPE record_status AS ENUM ('draft', 'captured', 'reviewed', 'final');
 
 -- ============================================================
@@ -21,6 +21,9 @@ CREATE TABLE users (
     full_name VARCHAR(100) NOT NULL,
     role user_role NOT NULL,
     is_active BOOLEAN DEFAULT true,
+    must_change_password BOOLEAN DEFAULT false,
+    can_manage_users BOOLEAN DEFAULT false,
+    is_superadmin BOOLEAN DEFAULT false,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );

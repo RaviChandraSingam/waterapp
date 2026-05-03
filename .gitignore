@@ -15,6 +15,9 @@ web/.env
 web/dist/
 mobile/.expo/
 
+# Firebase build artifacts
+.firebase/
+
 # OS files
 .DS_Store
 Thumbs.db
@@ -49,6 +52,9 @@ package-lock.json
 
 # Uploaded files
 uploads/
+
+# Local drafts and articles
+medium-article.md
 
 DEPLOYMENT.md
 VIDEO_SCRIPT.md

@@ -1,12 +1,15 @@
 const express = require('express');
 const db = require('../db');
 const { authenticate } = require('../middleware/auth');
+const cache = require('../cache');
 
 const router = express.Router();
 
 // GET /api/dashboard/summary
 router.get('/summary', authenticate, async (req, res) => {
   try {
+    const cached = cache.get('dashboard_summary');
+    if (cached) return res.json(cached);
     // Latest monthly record
     const latestRecord = await db.query(`
       SELECT * FROM monthly_records ORDER BY year DESC, month DESC LIMIT 1
@@ -38,13 +41,15 @@ router.get('/summary', authenticate, async (req, res) => {
       warningCount = parseInt(warnings.rows[0].count);
     }
 
-    res.json({
+    const summary = {
       totalFlats: parseInt(flatCount.rows[0].count),
       blockStats: blockStats.rows,
       latestRecord: latestRecord.rows[0] || null,
       recentRecords: recentRecords.rows,
       warningCount,
-    });
+    };
+    cache.set('dashboard_summary', summary);
+    res.json(summary);
   } catch (err) {
     console.error('Dashboard error:', err);
     res.status(500).json({ error: 'Internal server error' });

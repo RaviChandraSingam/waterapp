@@ -22,6 +22,8 @@ export default function MonthlyRecordDetailPage() {
   const [editSourceReadings, setEditSourceReadings] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [uploadStats, setUploadStats] = useState(null);
+  const [pendingFile, setPendingFile] = useState(null);
+  const [uploadPreview, setUploadPreview] = useState(null);
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -107,15 +109,32 @@ export default function MonthlyRecordDetailPage() {
     setMessage('');
     setUploadStats(null);
     try {
-      const result = await api.uploadExcel(id, file);
-      setUploadStats(result.stats);
-      setMessage(`Excel imported: ${result.stats.readingsImported} readings from ${result.stats.blocksProcessed} blocks`);
-      loadData();
+      const preview = await api.previewExcel(id, file);
+      setPendingFile(file);
+      setUploadPreview(preview);
     } catch (err) {
       setMessage(`Error: ${err.message}`);
     } finally {
       setUploading(false);
       e.target.value = '';
+    }
+  }
+
+  async function handleConfirmUpload() {
+    if (!pendingFile) return;
+    setUploading(true);
+    setMessage('');
+    try {
+      const result = await api.uploadExcel(id, pendingFile);
+      setUploadStats(result.stats);
+      setMessage(`Excel imported: ${result.stats.readingsImported} readings from ${result.stats.blocksProcessed} blocks`);
+      setUploadPreview(null);
+      setPendingFile(null);
+      loadData();
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    } finally {
+      setUploading(false);
     }
   }
 
@@ -630,6 +649,158 @@ export default function MonthlyRecordDetailPage() {
           </div>
         </div>
       )}
+      {uploadPreview && (
+        <UploadPreviewModal
+          preview={uploadPreview}
+          onConfirm={handleConfirmUpload}
+          onCancel={() => { setUploadPreview(null); setPendingFile(null); }}
+          confirming={uploading}
+        />
+      )}
+    </div>
+  );
+}
+
+function UploadPreviewModal({ preview, onConfirm, onCancel, confirming }) {
+  const [activeTab, setActiveTab] = useState('sources');
+  const [activeBlock, setActiveBlock] = useState(() => Object.keys(preview.blockReadings)[0] || null);
+
+  const totalNewReadings = preview.stats.readingsFound;
+  const existingReadings = preview.stats.existingReadings || 0;
+
+  return (
+    <div className="modal-overlay">
+      <div className="modal" style={{ maxWidth: 800, width: '95vw', maxHeight: '90vh', display: 'flex', flexDirection: 'column' }}>
+        <div className="modal-header">
+          <h2>Review Import — Excel Preview</h2>
+          <button className="modal-close" onClick={onCancel} disabled={confirming}>&times;</button>
+        </div>
+
+        {existingReadings > 0 && (
+          <div className="alert" style={{ background: '#fff3cd', border: '1px solid #ffc107', borderRadius: 4, padding: '10px 14px', margin: '0 0 12px 0', fontSize: '0.93em' }}>
+            ⚠️ <strong>This will overwrite {existingReadings} existing meter readings</strong> for this month. Review the data below before confirming.
+          </div>
+        )}
+
+        <div style={{ display: 'flex', gap: 8, marginBottom: 12, borderBottom: '1px solid #e0e0e0', paddingBottom: 8 }}>
+          <button className={`tab ${activeTab === 'sources' ? 'active' : ''}`} onClick={() => setActiveTab('sources')}>Water Sources &amp; Costs</button>
+          <button className={`tab ${activeTab === 'readings' ? 'active' : ''}`} onClick={() => setActiveTab('readings')}>
+            Meter Readings <span style={{ background: '#1a73e8', color: '#fff', borderRadius: 10, padding: '1px 7px', fontSize: '0.82em', marginLeft: 4 }}>{totalNewReadings}</span>
+          </button>
+          <button className={`tab ${activeTab === 'common' ? 'active' : ''}`} onClick={() => setActiveTab('common')}>Common Areas</button>
+        </div>
+
+        <div style={{ overflowY: 'auto', flex: 1 }}>
+          {activeTab === 'sources' && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+              {preview.periods.startDate && (
+                <div style={{ fontSize: '0.9em', color: '#555' }}>
+                  Period: <strong>{preview.periods.startDate}</strong> → <strong>{preview.periods.endDate}</strong>
+                </div>
+              )}
+              <table>
+                <thead>
+                  <tr style={{ background: '#e8f0fe' }}>
+                    <th>Source</th><th>Type</th>
+                    <th style={{ textAlign: 'right' }}>Start / Count</th>
+                    <th style={{ textAlign: 'right' }}>End</th>
+                    <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                    <th style={{ textAlign: 'right' }}>Total Cost (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {preview.waterSources.length === 0 && <tr><td colSpan={6} className="empty-state">No water source data in sheet.</td></tr>}
+                  {preview.waterSources.map((ws, i) => (
+                    <tr key={i}>
+                      <td>{ws.name}</td>
+                      <td>{ws.type}</td>
+                      <td style={{ textAlign: 'right' }}>{ws.type === 'borewell' ? ws.startReading : ws.unitCount}</td>
+                      <td style={{ textAlign: 'right' }}>{ws.type === 'borewell' ? ws.endReading : '-'}</td>
+                      <td style={{ textAlign: 'right' }}>{Number(ws.consumptionLitres).toLocaleString()}</td>
+                      <td style={{ textAlign: 'right' }}>{ws.totalCost != null ? `₹${Number(ws.totalCost).toLocaleString()}` : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {preview.costItems.length > 0 && (
+                <table>
+                  <thead><tr style={{ background: '#e8f0fe' }}><th>Cost Item</th><th style={{ textAlign: 'right' }}>Amount (₹)</th></tr></thead>
+                  <tbody>
+                    {preview.costItems.map((ci, i) => (
+                      <tr key={i}><td>{ci.name}</td><td style={{ textAlign: 'right' }}>₹{Number(ci.amount).toLocaleString()}</td></tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'readings' && (
+            <div>
+              <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap' }}>
+                {Object.keys(preview.blockReadings).map(block => (
+                  <button key={block} className={`tab ${activeBlock === block ? 'active' : ''}`} onClick={() => setActiveBlock(block)}>
+                    {block} <span style={{ fontSize: '0.82em', color: '#888', marginLeft: 3 }}>({preview.blockReadings[block].length})</span>
+                  </button>
+                ))}
+              </div>
+              {activeBlock && preview.blockReadings[activeBlock] && (
+                <table>
+                  <thead>
+                    <tr style={{ background: '#e8f0fe' }}>
+                      <th>Flat No</th>
+                      <th style={{ textAlign: 'right' }}>Reading 1</th>
+                      <th style={{ textAlign: 'right' }}>Reading 2</th>
+                      <th style={{ textAlign: 'right' }}>Reading 3</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.blockReadings[activeBlock].map((r, i) => (
+                      <tr key={i}>
+                        <td style={{ fontWeight: 600 }}>{r.flatNumber}</td>
+                        <td style={{ textAlign: 'right' }}>{r.reading1 ?? '-'}</td>
+                        <td style={{ textAlign: 'right' }}>{r.reading2 ?? '-'}</td>
+                        <td style={{ textAlign: 'right' }}>{r.reading3 ?? '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
+
+          {activeTab === 'common' && (
+            <table>
+              <thead>
+                <tr style={{ background: '#e8f0fe' }}>
+                  <th>Area</th>
+                  <th style={{ textAlign: 'right' }}>Start</th>
+                  <th style={{ textAlign: 'right' }}>End</th>
+                  <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {preview.commonAreas.length === 0 && <tr><td colSpan={4} className="empty-state">No common area data in sheet.</td></tr>}
+                {preview.commonAreas.map((ca, i) => (
+                  <tr key={i}>
+                    <td>{ca.name}</td>
+                    <td style={{ textAlign: 'right' }}>{ca.startReading}</td>
+                    <td style={{ textAlign: 'right' }}>{ca.endReading}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(ca.consumptionLitres).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        <div className="form-actions" style={{ marginTop: 16, borderTop: '1px solid #e0e0e0', paddingTop: 12 }}>
+          <button className="btn btn-secondary" onClick={onCancel} disabled={confirming}>Cancel</button>
+          <button className="btn btn-primary" onClick={onConfirm} disabled={confirming}>
+            {confirming ? 'Importing...' : `Confirm Import (${totalNewReadings} readings)`}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

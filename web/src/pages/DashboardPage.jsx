@@ -9,6 +9,7 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState([]);
   const [blockData, setBlockData] = useState([]);
+  const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -27,6 +28,11 @@ export default function DashboardPage() {
       if (sum.latestRecord) {
         const bd = await api.getBlockConsumption(sum.latestRecord.id);
         setBlockData(bd);
+      }
+
+      if (user.role === 'watercommittee' || user.isSuperadmin) {
+        const an = await api.getAnalyticsSummary().catch(() => null);
+        setAnalytics(an);
       }
     } catch (err) {
       console.error(err);
@@ -157,6 +163,60 @@ export default function DashboardPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      {analytics && (
+        <>
+          <div className="grid-2">
+            <div className="card">
+              <div className="card-header">
+                <h3>Daily Visitors (Last 14 Days)</h3>
+                <span className="badge" style={{ background: '#e3f2fd', color: '#1565c0' }}>Today: {analytics.todayUniqueUsers} user{analytics.todayUniqueUsers !== 1 ? 's' : ''}</span>
+              </div>
+              {analytics.dailyVisits.length > 0 ? (
+                <table>
+                  <thead><tr><th>Date</th><th style={{ textAlign: 'right' }}>Unique Users</th><th style={{ textAlign: 'right' }}>Page Views</th></tr></thead>
+                  <tbody>
+                    {analytics.dailyVisits.map(d => (
+                      <tr key={d.visit_date}>
+                        <td>{new Date(d.visit_date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', weekday: 'short' })}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{d.unique_users}</td>
+                        <td style={{ textAlign: 'right', color: '#666' }}>{d.total_visits}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state"><span className="emoji">📈</span><p>No visit data yet</p></div>
+              )}
+            </div>
+
+            <div className="card">
+              <div className="card-header">
+                <h3>Popular Pages (Last 30 Days)</h3>
+              </div>
+              {analytics.popularPages.length > 0 ? (
+                <table>
+                  <thead><tr><th>Page</th><th style={{ textAlign: 'right' }}>Views</th><th style={{ textAlign: 'right' }}>Users</th></tr></thead>
+                  <tbody>
+                    {analytics.popularPages.map((p, i) => (
+                      <tr key={p.page}>
+                        <td>
+                          <span style={{ display: 'inline-block', width: 20, color: '#999', fontSize: 12 }}>#{i + 1}</span>
+                          {p.label}
+                        </td>
+                        <td style={{ textAlign: 'right', fontWeight: 600 }}>{p.visits}</td>
+                        <td style={{ textAlign: 'right', color: '#666' }}>{p.unique_users}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <div className="empty-state"><span className="emoji">📊</span><p>No page data yet</p></div>
+              )}
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

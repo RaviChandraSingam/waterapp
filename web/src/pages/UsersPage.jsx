@@ -3,6 +3,7 @@ import { api } from '../services/api';
 import { useAuth } from '../App';
 
 const ROLES = [
+  { value: 'guest', label: 'Guest', desc: 'Read-only view of dashboard and records' },
   { value: 'plumber', label: 'Plumber', desc: 'Capture meter readings' },
   { value: 'accountant', label: 'Accountant', desc: 'Review and modify readings, export reports' },
   { value: 'watercommittee', label: 'Water Committee', desc: 'Full admin access, sign-off billing' },
@@ -13,8 +14,11 @@ export default function UsersPage() {
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
-  const [form, setForm] = useState({ username: '', password: '', name: '', role: 'plumber' });
+  const [form, setForm] = useState({ username: '', password: '', fullName: '', role: 'plumber' });
   const [error, setError] = useState('');
+  const [resetModal, setResetModal] = useState(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetError, setResetError] = useState('');
 
   useEffect(() => { loadUsers(); }, []);
 
@@ -28,7 +32,7 @@ export default function UsersPage() {
   async function handleCreate(e) {
     e.preventDefault();
     setError('');
-    if (!form.username || !form.password || !form.name) {
+    if (!form.username || !form.password || !form.fullName) {
       setError('All fields are required');
       return;
     }
@@ -37,12 +41,38 @@ export default function UsersPage() {
       return;
     }
     try {
-      await api.createUser(form);
+      await api.createUser({ username: form.username, password: form.password, fullName: form.fullName, role: form.role });
       setShowCreate(false);
-      setForm({ username: '', password: '', name: '', role: 'plumber' });
+      setForm({ username: '', password: '', fullName: '', role: 'plumber' });
       loadUsers();
     } catch (err) {
       setError(err.message || 'Failed to create user');
+    }
+  }
+
+  async function handleResetPassword(e) {
+    e.preventDefault();
+    setResetError('');
+    if (!resetPassword || resetPassword.length < 8) {
+      setResetError('Password must be at least 8 characters');
+      return;
+    }
+    try {
+      await api.resetUserPassword(resetModal.id, resetPassword);
+      setResetModal(null);
+      setResetPassword('');
+      alert('Password reset successfully. User will be prompted to change it on next login.');
+    } catch (err) {
+      setResetError(err.message || 'Failed to reset password');
+    }
+  }
+
+  async function toggleManageUsers(userId, currentValue) {
+    try {
+      await api.updateUserPermissions(userId, !currentValue);
+      loadUsers();
+    } catch (err) {
+      alert(err.message || 'Failed to update permissions');
     }
   }
 
@@ -62,14 +92,16 @@ export default function UsersPage() {
               <th>Username</th>
               <th>Name</th>
               <th>Role</th>
+              {currentUser.isSuperadmin && <th>Can Manage Users</th>}
               <th>Created</th>
+              {currentUser.isSuperadmin && <th>Actions</th>}
             </tr>
           </thead>
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td style={{ fontWeight: 600 }}>{u.username}</td>
-                <td>{u.name}</td>
+                <td style={{ fontWeight: 600 }}>{u.username}{u.is_superadmin && ' ⭐'}</td>
+                <td>{u.full_name}</td>
                 <td>
                   <span className={`badge ${
                     u.role === 'watercommittee' ? 'badge-primary' :
@@ -78,7 +110,35 @@ export default function UsersPage() {
                     {ROLES.find(r => r.value === u.role)?.label || u.role}
                   </span>
                 </td>
+                {currentUser.isSuperadmin && (
+                  <td>
+                    {u.is_superadmin ? (
+                      <span style={{ color: '#4caf50' }}>Always</span>
+                    ) : (
+                      <button
+                        className={`btn btn-sm ${u.can_manage_users ? 'btn-success' : 'btn-secondary'}`}
+                        onClick={() => toggleManageUsers(u.id, u.can_manage_users)}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      >
+                        {u.can_manage_users ? 'Yes' : 'No'}
+                      </button>
+                    )}
+                  </td>
+                )}
                 <td>{new Date(u.created_at).toLocaleDateString()}</td>
+                {currentUser.isSuperadmin && (
+                  <td>
+                    {!u.is_superadmin && (
+                      <button
+                        className="btn btn-sm btn-warning"
+                        onClick={() => { setResetModal(u); setResetPassword(''); setResetError(''); }}
+                        style={{ fontSize: '0.8rem', padding: '4px 10px' }}
+                      >
+                        Reset Password
+                      </button>
+                    )}
+                  </td>
+                )}
               </tr>
             ))}
           </tbody>
@@ -93,6 +153,11 @@ export default function UsersPage() {
           </thead>
           <tbody>
             <tr>
+              <td><span className="badge" style={{ background: '#9e9e9e', color: 'white' }}>Guest</span></td>
+              <td>Read-only viewer</td>
+              <td>View dashboard and monthly records only — no data entry or admin access</td>
+            </tr>
+            <tr>
               <td><span className="badge badge-secondary">Plumber</span></td>
               <td>Meter reading capture</td>
               <td>View blocks/flats, capture weekly meter readings, view own submissions</td>
@@ -105,7 +170,7 @@ export default function UsersPage() {
             <tr>
               <td><span className="badge badge-primary">Water Committee</span></td>
               <td>Full administration</td>
-              <td>All accountant abilities + sign-off billing, manage users, configure system</td>
+              <td>All accountant abilities + sign-off billing, configure system</td>
             </tr>
           </tbody>
         </table>
@@ -126,7 +191,7 @@ export default function UsersPage() {
               </div>
               <div className="form-group">
                 <label>Full Name</label>
-                <input type="text" value={form.name} onChange={e => setForm({...form, name: e.target.value})} />
+                <input type="text" value={form.fullName} onChange={e => setForm({...form, fullName: e.target.value})} />
               </div>
               <div className="form-group">
                 <label>Password</label>
@@ -141,6 +206,31 @@ export default function UsersPage() {
               <div className="form-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => { setShowCreate(false); setError(''); }}>Cancel</button>
                 <button type="submit" className="btn">Create User</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {resetModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h2>Reset Password for {resetModal.full_name}</h2>
+              <button className="modal-close" onClick={() => setResetModal(null)}>&times;</button>
+            </div>
+            <form onSubmit={handleResetPassword}>
+              {resetError && <div className="alert alert-error">{resetError}</div>}
+              <p style={{ marginBottom: 12, color: '#666' }}>
+                Set a new temporary password for <strong>{resetModal.username}</strong>. They will be prompted to change it on next login.
+              </p>
+              <div className="form-group">
+                <label>New Password</label>
+                <input type="password" value={resetPassword} onChange={e => setResetPassword(e.target.value)} autoFocus minLength={8} />
+              </div>
+              <div className="form-actions">
+                <button type="button" className="btn btn-secondary" onClick={() => setResetModal(null)}>Cancel</button>
+                <button type="submit" className="btn">Reset Password</button>
               </div>
             </form>
           </div>

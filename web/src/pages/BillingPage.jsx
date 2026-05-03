@@ -41,9 +41,14 @@ export default function BillingPage() {
       <div className="page-header">
         <h1>Billing & Reports</h1>
         {user.role !== 'plumber' && selectedRecord && (
-          <button className="btn btn-success" onClick={() => api.exportExcel(selectedRecord)}>
-            Download Excel
-          </button>
+          <>
+            <button className="btn btn-success" onClick={() => api.exportExcel(selectedRecord)} style={{ marginRight: 8 }}>
+              Download Excel
+            </button>
+            <button className="btn btn-secondary" onClick={() => api.exportBillingCSV(selectedRecord)}>
+              Download Billing CSV
+            </button>
+          </>
         )}
       </div>
 

@@ -3,11 +3,14 @@ const db = require('../db');
 /**
  * Recalculates cost_per_litre, total_water_input, total_water_usage
  * and flat billing for a monthly record.
- * Called after Excel import and from the /calculate endpoint.
+ * @param {string} recordId - The monthly record ID
+ * @param {object} [externalClient] - Optional DB client to use (for transactions)
  */
-async function recalculateMonthlyRecord(recordId) {
+async function recalculateMonthlyRecord(recordId, externalClient = null) {
+  const query = (text, params) => (externalClient || db).query(text, params);
+
   // Get billing config
-  const config = await db.query('SELECT * FROM billing_config');
+  const config = await query('SELECT * FROM billing_config');
   const configMap = {};
   config.rows.forEach(c => { configMap[c.config_key] = parseFloat(c.config_value); });
 
@@ -18,11 +21,11 @@ async function recalculateMonthlyRecord(recordId) {
   const slab3Mult = configMap.slab3_multiplier || 2.0;
 
   // Total cost = cost_items + water source totals
-  const costItems = await db.query(
+  const costItems = await query(
     'SELECT SUM(amount) as total FROM cost_items WHERE monthly_record_id = $1',
     [recordId]
   );
-  const waterSourceReadings = await db.query(
+  const waterSourceReadings = await query(
     'SELECT SUM(total_cost) as tanker_cost FROM water_source_readings WHERE monthly_record_id = $1',
     [recordId]
   );
@@ -32,7 +35,7 @@ async function recalculateMonthlyRecord(recordId) {
   const totalCost = itemsCost + tankerCost;
 
   // Total water input = sum of all source consumption
-  const inputResult = await db.query(
+  const inputResult = await query(
     'SELECT SUM(consumption_litres) as total FROM water_source_readings WHERE monthly_record_id = $1',
     [recordId]
   );
@@ -41,7 +44,7 @@ async function recalculateMonthlyRecord(recordId) {
   const costPerLitre = totalInput > 0 ? totalCost / totalInput : 0;
 
   // Calculate flat billing
-  const readings = await db.query(`
+  const readings = await query(`
     SELECT flat_id,
       MIN(CASE WHEN reading_sequence = 1 THEN reading_value END) as start_reading,
       MAX(CASE WHEN reading_sequence = 3 THEN reading_value
@@ -69,7 +72,7 @@ async function recalculateMonthlyRecord(recordId) {
     const slab3Cost = slab3Qty * costPerLitre * slab3Mult;
     const flatTotalCost = slab1Cost + slab2Cost + slab3Cost;
 
-    await db.query(`
+    await query(`
       INSERT INTO flat_billing (monthly_record_id, flat_id, start_reading, end_reading,
         consumption_litres, slab1_qty, slab2_qty, slab3_qty, slab1_cost, slab2_cost, slab3_cost, total_cost)
       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
@@ -86,7 +89,7 @@ async function recalculateMonthlyRecord(recordId) {
   }
 
   // Common area consumption
-  const commonReadings = await db.query(
+  const commonReadings = await query(
     'SELECT * FROM common_area_readings WHERE monthly_record_id = $1',
     [recordId]
   );
@@ -94,7 +97,7 @@ async function recalculateMonthlyRecord(recordId) {
   for (const cr of commonReadings.rows) {
     const consumption = (parseFloat(cr.end_reading) - parseFloat(cr.start_reading)) * 1000;
     commonTotal += consumption;
-    await db.query(
+    await query(
       'UPDATE common_area_readings SET consumption_litres = $1 WHERE id = $2',
       [consumption, cr.id]
     );
@@ -103,7 +106,7 @@ async function recalculateMonthlyRecord(recordId) {
   totalUsage += commonTotal;
 
   // Update monthly record summary fields
-  await db.query(`
+  await query(`
     UPDATE monthly_records
     SET cost_per_litre = $1, total_water_input = $2, total_water_usage = $3, updated_at = NOW()
     WHERE id = $4

@@ -34,6 +34,7 @@ services:
       DATABASE_URL: postgresql://waterapp:waterapp_secret@db:5432/waterapp
       JWT_SECRET: waterapp_jwt_secret_change_in_production
       PORT: 3000
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
     ports:
       - "3000:3000"
     depends_on:
