@@ -24,6 +24,8 @@ export default function MonthlyRecordDetailPage() {
   const [uploadStats, setUploadStats] = useState(null);
   const [pendingFile, setPendingFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
+  const [editingDates, setEditingDates] = useState(false);
+  const [editDates, setEditDates] = useState({});
 
   useEffect(() => { loadData(); }, [id]);
 
@@ -61,8 +63,28 @@ export default function MonthlyRecordDetailPage() {
 
   async function handleCalculate() {
     try {
-      const result = await api.calculateBilling(id);
-      setMessage(`Billing calculated! Cost/litre: ₹${result.costPerLitre.toFixed(4)}, ${result.flatsCalculated} flats processed.`);
+      await api.calculateBilling(id);
+      setMessage('Recalculated and the Cost per liter and billing are updated');
+      loadData();
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    }
+  }
+
+  function startEditDates() {
+    setEditDates({
+      periodStartDate: record.period_start_date?.split('T')[0] || '',
+      periodEndDate: record.period_end_date?.split('T')[0] || '',
+      midPeriodDate: record.mid_period_date?.split('T')[0] || '',
+    });
+    setEditingDates(true);
+  }
+
+  async function handleSaveDates() {
+    try {
+      await api.updateDates(id, editDates);
+      setMessage('Dates updated successfully');
+      setEditingDates(false);
       loadData();
     } catch (err) {
       setMessage(`Error: ${err.message}`);
@@ -247,12 +269,38 @@ export default function MonthlyRecordDetailPage() {
           {/* Header row: period + workflow */}
           <div className="grid-2">
             <div className="card">
-              <h3 style={{ marginBottom: 12 }}>Record Details</h3>
-              <table><tbody>
-                <tr><td>Period</td><td>{record.period_start_date?.split('T')[0]} to {record.period_end_date?.split('T')[0]}</td></tr>
-                <tr><td>Mid Period</td><td>{record.mid_period_date?.split('T')[0] || '-'}</td></tr>
-                <tr><td>Status</td><td><span className={`badge badge-${record.status}`}>{record.status}</span></td></tr>
-              </tbody></table>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0 }}>Record Details</h3>
+                {!editingDates && canCalculate && (
+                  <button className="btn btn-sm btn-secondary" onClick={startEditDates}>Edit Dates</button>
+                )}
+              </div>
+              {editingDates ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.9rem' }}>
+                    Start Date
+                    <input type="date" className="form-control" value={editDates.periodStartDate} onChange={e => setEditDates(d => ({ ...d, periodStartDate: e.target.value }))} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.9rem' }}>
+                    End Date
+                    <input type="date" className="form-control" value={editDates.periodEndDate} onChange={e => setEditDates(d => ({ ...d, periodEndDate: e.target.value }))} />
+                  </label>
+                  <label style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: '0.9rem' }}>
+                    Mid Period Date
+                    <input type="date" className="form-control" value={editDates.midPeriodDate} onChange={e => setEditDates(d => ({ ...d, midPeriodDate: e.target.value }))} />
+                  </label>
+                  <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+                    <button className="btn btn-primary btn-sm" onClick={handleSaveDates}>Save</button>
+                    <button className="btn btn-secondary btn-sm" onClick={() => setEditingDates(false)}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <table><tbody>
+                  <tr><td>Period</td><td>{record.period_start_date?.split('T')[0]} to {record.period_end_date?.split('T')[0]}</td></tr>
+                  <tr><td>Mid Period</td><td>{record.mid_period_date?.split('T')[0] || '-'}</td></tr>
+                  <tr><td>Status</td><td><span className={`badge badge-${record.status}`}>{record.status}</span></td></tr>
+                </tbody></table>
+              )}
             </div>
             <div className="card">
               <h3 style={{ marginBottom: 12 }}>Workflow</h3>

@@ -8,6 +8,21 @@ const { recalculateMonthlyRecord } = require('../helpers/recalculate');
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+function uploadSingleExcel(req, res, next) {
+  upload.single('file')(req, res, (err) => {
+    if (!err) return next();
+
+    if (err instanceof multer.MulterError) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ error: 'File too large. Maximum allowed size is 10MB.' });
+      }
+      return res.status(400).json({ error: `Upload validation failed: ${err.message}` });
+    }
+
+    return res.status(400).json({ error: `Upload failed: ${err.message}` });
+  });
+}
+
 // Extract a numeric result from a cell that may be a plain number or a cached formula result
 function getCellResult(cell) {
   if (cell === null || cell === undefined) return null;
@@ -35,7 +50,7 @@ function parseDate(val) {
 }
 
 // POST /api/upload/:monthlyRecordId/preview — parse Excel and return preview data WITHOUT writing to DB
-router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', 'watercommittee'), upload.single('file'), async (req, res) => {
+router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', 'watercommittee'), uploadSingleExcel, async (req, res) => {
   try {
     const { monthlyRecordId } = req.params;
     if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
@@ -172,7 +187,7 @@ router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', '
 });
 
 // POST /api/upload/:monthlyRecordId — upload Excel with meter readings for a monthly record
-router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercommittee'), upload.single('file'), async (req, res) => {
+router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercommittee'), uploadSingleExcel, async (req, res) => {
   const client = await db.pool.connect();
   try {
     const { monthlyRecordId } = req.params;
@@ -195,6 +210,13 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
     await workbook.xlsx.load(req.file.buffer);
 
     await client.query('BEGIN');
+
+    // Remove all existing data for this monthly record before import
+    await client.query('DELETE FROM meter_readings WHERE monthly_record_id = $1', [monthlyRecordId]);
+    await client.query('DELETE FROM flat_billing WHERE monthly_record_id = $1', [monthlyRecordId]);
+    await client.query('DELETE FROM common_area_readings WHERE monthly_record_id = $1', [monthlyRecordId]);
+    await client.query('DELETE FROM water_source_readings WHERE monthly_record_id = $1', [monthlyRecordId]);
+    await client.query('DELETE FROM cost_items WHERE monthly_record_id = $1', [monthlyRecordId]);
 
     const stats = { readingsImported: 0, blocksProcessed: 0, skipped: 0, errors: [], waterSources: 0, costItems: 0, commonAreas: 0 };
 

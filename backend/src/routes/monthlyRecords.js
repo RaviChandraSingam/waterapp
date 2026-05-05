@@ -293,4 +293,28 @@ router.post('/:id/calculate', authenticate, authorize('accountant', 'watercommit
   }
 });
 
+// PUT /api/monthly-records/:id/dates
+router.put('/:id/dates', authenticate, authorize('accountant', 'watercommittee'), async (req, res) => {
+  try {
+    const { periodStartDate, periodEndDate, midPeriodDate } = req.body;
+    if (!periodStartDate || !periodEndDate) {
+      return res.status(400).json({ error: 'Start date and end date are required' });
+    }
+
+    const result = await db.query(
+      'UPDATE monthly_records SET period_start_date = $1, period_end_date = $2, mid_period_date = $3, updated_at = NOW() WHERE id = $4 RETURNING *',
+      [periodStartDate, periodEndDate, midPeriodDate || null, req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Monthly record not found' });
+    }
+
+    res.json(result.rows[0]);
+  } catch (err) {
+    console.error('Dates update error:', err);
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 module.exports = router;

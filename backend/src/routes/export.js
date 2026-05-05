@@ -16,37 +16,74 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     const record = recordResult.rows[0];
     const monthNames = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const filename = `water_consumption_${monthNames[record.month]}${record.year}.xlsx`;
+    // Helper: convert a DB Date/string to YYYY-MM-DD
+    const fmt = d => d ? new Date(d).toISOString().split('T')[0] : '';
 
     const workbook = new ExcelJS.Workbook();
 
     // === SUMMARY SHEET ===
+    // Row layout must match the importer's hardcoded expectations:
+    //   Row 1: title, Row 2: ['', startDate, endDate]
+    //   Rows 3-6: borewells in fixed order (Ablock New, A block, C block, D block)
+    //   Rows 7-8: tankers (padded to 2 rows)
+    //   Row 9+: cost items
     const summarySheet = workbook.addWorksheet('Summary');
     summarySheet.columns = [
-      { header: '', width: 30 },
-      { header: '', width: 15 },
-      { header: '', width: 15 },
-      { header: '', width: 15 },
+      { width: 30 }, { width: 15 }, { width: 15 }, { width: 15 },
     ];
 
-    summarySheet.addRow(['WATER INPUT']);
-    summarySheet.addRow(['', record.period_start_date, record.period_end_date]);
+    summarySheet.addRow(['WATER INPUT']);                                          // row 1
+    summarySheet.addRow(['', fmt(record.period_start_date), fmt(record.period_end_date)]); // row 2
 
-    // Water sources
-    const sources = await db.query(`
-      SELECT ws.name, wsr.start_reading, wsr.end_reading, wsr.unit_count, wsr.consumption_litres, wsr.total_cost
-      FROM water_source_readings wsr
-      JOIN water_sources ws ON wsr.water_source_id = ws.id
-      WHERE wsr.monthly_record_id = $1
-      ORDER BY ws.name
+    // Rows 3-6: borewells in the fixed order the importer expects
+    const BOREWELL_IMPORT_ORDER = ['Ablock New Borewell', 'A block Borewell', 'C block Borewell', 'D block Borewell'];
+    const borewellResult = await db.query(`
+      SELECT ws.name, wsr.start_reading, wsr.end_reading, wsr.consumption_litres
+      FROM water_sources ws
+      LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
+      WHERE ws.source_type = 'borewell'
     `, [req.params.monthlyRecordId]);
-
-    sources.rows.forEach(s => {
-      if (s.start_reading !== null) {
-        summarySheet.addRow([s.name, parseFloat(s.start_reading), parseFloat(s.end_reading), parseFloat(s.consumption_litres)]);
+    // Ensure only one reading per borewell name, and never duplicate readings
+    const borewellMap = new Map();
+    borewellResult.rows.forEach(r => {
+      if (r.name && !borewellMap.has(r.name)) borewellMap.set(r.name, r);
+    });
+    BOREWELL_IMPORT_ORDER.forEach(name => {
+      const b = borewellMap.get(name);
+      if (b && b.start_reading !== null) {
+        summarySheet.addRow([name, parseFloat(b.start_reading), parseFloat(b.end_reading), parseFloat(b.consumption_litres)]);
       } else {
-        summarySheet.addRow([s.name, parseFloat(s.unit_count), '', parseFloat(s.consumption_litres)]);
+        summarySheet.addRow([name, '', '', '']);
       }
     });
+
+    // Rows 7-8: tankers (always 2 rows so downstream rows stay aligned)
+    const tankerResult = await db.query(`
+      SELECT ws.name, wsr.unit_count, wsr.consumption_litres, wsr.total_cost
+      FROM water_sources ws
+      LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
+      WHERE ws.source_type = 'tanker'
+      ORDER BY ws.name
+    `, [req.params.monthlyRecordId]);
+    let tankerRowsWritten = 0;
+    tankerResult.rows.forEach(t => {
+      if (tankerRowsWritten < 2) {
+        let costPerTanker = '';
+        if (t.unit_count && t.total_cost) {
+          const n = parseFloat(t.unit_count);
+          const total = parseFloat(t.total_cost);
+          if (n > 0) costPerTanker = Math.round((total / n) * 100) / 100;
+        }
+        summarySheet.addRow([
+          t.name,
+          t.unit_count !== null ? parseFloat(t.unit_count) : '',
+          costPerTanker,
+          t.consumption_litres !== null ? parseFloat(t.consumption_litres) : ''
+        ]);
+        tankerRowsWritten++;
+      }
+    });
+    while (tankerRowsWritten < 2) { summarySheet.addRow(['', '', '', '']); tankerRowsWritten++; }
 
     summarySheet.addRow(['TOTAL Input (Litres)', '', '', parseFloat(record.total_water_input || 0)]);
     summarySheet.addRow([]);
@@ -89,8 +126,8 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     const consumptionSheet = workbook.addWorksheet('Consumption');
     consumptionSheet.columns = [
       { header: 'Common Rooms', width: 25 },
-      { header: String(record.period_start_date), width: 15 },
-      { header: String(record.period_end_date), width: 15 },
+      { header: fmt(record.period_start_date), width: 15 },
+      { header: fmt(record.period_end_date), width: 15 },
       { header: 'Consumption', width: 15 },
     ];
 
@@ -111,22 +148,23 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     for (const block of blocks.rows) {
       const sheet = workbook.addWorksheet(`${block.display_name}`);
       sheet.columns = [
-        { header: 'Flat No', width: 10 },
-        { header: String(record.period_start_date), width: 12 },
-        { header: 'Mid Reading', width: 12 },
-        { header: String(record.period_end_date), width: 12 },
-        { header: 'Consumption', width: 13 },
-        { header: 'Slab1 (QTY)', width: 12 },
-        { header: 'Slab2 (QTY)', width: 12 },
-        { header: 'Slab3 (QTY)', width: 12 },
-        { header: 'Cost Slab1', width: 12 },
-        { header: 'Cost Slab2', width: 12 },
-        { header: 'Cost Slab3', width: 12 },
-        { header: 'Total Cost', width: 12 },
+        { width: 10 }, { width: 12 }, { width: 12 }, { width: 12 },
+        { width: 13 }, { width: 12 }, { width: 12 }, { width: 12 },
+        { width: 12 }, { width: 12 }, { width: 12 }, { width: 12 },
       ];
 
-      // Style header row
-      const headerRow = sheet.getRow(1);
+      // Row 1: title row (import skips this row, reads data from row 3)
+      sheet.addRow([block.display_name]);
+
+      // Row 2: header row with dates as column headers (import reads mid date from C2)
+      const headerRow = sheet.addRow([
+        'Flat No',
+        fmt(record.period_start_date),
+        'Mid Reading',
+        fmt(record.period_end_date),
+        'Consumption', 'Slab1 (QTY)', 'Slab2 (QTY)', 'Slab3 (QTY)',
+        'Cost Slab1', 'Cost Slab2', 'Cost Slab3', 'Total Cost',
+      ]);
       headerRow.font = { bold: true };
       headerRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9E1F2' } };
 
@@ -150,15 +188,16 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       midReadings.rows.forEach(mr => { midMap[mr.flat_id] = parseFloat(mr.reading_value); });
 
       billing.rows.forEach(b => {
+        const round3 = v => Math.round(parseFloat(v) * 1000) / 1000;
         sheet.addRow([
           b.flat_number,
           parseFloat(b.start_reading),
           midMap[b.flat_id] || '',
           parseFloat(b.end_reading),
-          parseFloat(b.consumption_litres),
-          parseFloat(b.slab1_qty),
-          parseFloat(b.slab2_qty),
-          parseFloat(b.slab3_qty),
+          round3(b.consumption_litres),
+          round3(b.slab1_qty),
+          round3(b.slab2_qty),
+          round3(b.slab3_qty),
           parseFloat(b.slab1_cost),
           parseFloat(b.slab2_cost),
           parseFloat(b.slab3_cost),
@@ -169,9 +208,9 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       // Add totals row
       const totalRow = sheet.addRow([
         'TOTAL', '', '', '',
-        { formula: `SUM(E2:E${billing.rows.length + 1})` },
+        { formula: `SUM(E3:E${billing.rows.length + 2})` },
         '', '', '', '', '', '',
-        { formula: `SUM(L2:L${billing.rows.length + 1})` },
+        { formula: `SUM(L3:L${billing.rows.length + 2})` },
       ]);
       totalRow.font = { bold: true };
     }

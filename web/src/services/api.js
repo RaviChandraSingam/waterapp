@@ -46,6 +46,7 @@ export const api = {
   getMonthlyRecord: (id) => request(`/monthly-records/${id}`),
   createMonthlyRecord: (data) => request('/monthly-records', { method: 'POST', body: JSON.stringify(data) }),
   updateStatus: (id, status) => request(`/monthly-records/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) }),
+  updateDates: (id, data) => request(`/monthly-records/${id}/dates`, { method: 'PUT', body: JSON.stringify(data) }),
   updateCostItems: (id, costItems) => request(`/monthly-records/${id}/cost-items`, { method: 'PUT', body: JSON.stringify({ costItems }) }),
   updateWaterSources: (id, readings) => request(`/monthly-records/${id}/water-sources`, { method: 'PUT', body: JSON.stringify({ readings }) }),
   calculateBilling: (id) => request(`/monthly-records/${id}/calculate`, { method: 'POST' }),
@@ -153,8 +154,13 @@ export const api = {
       body: formData,
     });
     if (!res.ok) {
-      const err = await res.json().catch(() => ({ error: 'Upload failed' }));
-      throw new Error(err.error || 'Upload failed');
+      const contentType = res.headers.get('content-type') || '';
+      if (contentType.includes('application/json')) {
+        const err = await res.json().catch(() => ({ error: 'Upload failed' }));
+        throw new Error(err.error || `Upload failed (HTTP ${res.status})`);
+      }
+      const text = await res.text().catch(() => '');
+      throw new Error(text ? `Upload failed (HTTP ${res.status}): ${text.slice(0, 180)}` : `Upload failed (HTTP ${res.status})`);
     }
     return res.json();
   },
