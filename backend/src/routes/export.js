@@ -29,7 +29,7 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     //   Row 9+: cost items
     const summarySheet = workbook.addWorksheet('Summary');
     summarySheet.columns = [
-      { width: 30 }, { width: 15 }, { width: 15 }, { width: 15 },
+      { width: 45 }, { width: 15 }, { width: 15 }, { width: 15 },
     ];
 
     summarySheet.addRow(['WATER INPUT']);                                          // row 1
@@ -121,6 +121,47 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       summarySheet.addRow([ci.item_name, parseFloat(ci.amount)]);
     });
     summarySheet.addRow(['Cost per Litre', parseFloat(record.cost_per_litre || 0)]);
+    summarySheet.addRow([]);
+
+    // === COST PER LITRE CALCULATION DETAILS ===
+    const totalItemsCost = costItems.rows.reduce((sum, ci) => sum + parseFloat(ci.amount || 0), 0);
+    const totalTankerCost = tankerResult.rows.reduce((sum, t) => sum + parseFloat(t.total_cost || 0), 0);
+    const overallTotalCost = totalItemsCost + totalTankerCost;
+    const totalWaterInput = parseFloat(record.total_water_input || 0);
+    const computedCostPerLitre = totalWaterInput > 0 ? overallTotalCost / totalWaterInput : 0;
+
+    const calcHeader = summarySheet.addRow(['Cost Per Litre Calculation']);
+    calcHeader.font = { bold: true };
+    calcHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
+
+    summarySheet.addRow(['Total Items Cost (₹)', Math.round(totalItemsCost * 100) / 100]);
+    summarySheet.addRow(['Total Tanker Cost (₹)', Math.round(totalTankerCost * 100) / 100]);
+
+    const totalCostRow = summarySheet.addRow(['Total Overall Cost (₹)', Math.round(overallTotalCost * 100) / 100]);
+    totalCostRow.font = { bold: true };
+
+    summarySheet.addRow(['Total Water Input (Litres)', totalWaterInput]);
+
+    const cplRow = summarySheet.addRow(['Cost Per Litre (Total Cost ÷ Total Input)', Math.round(computedCostPerLitre * 10000) / 10000]);
+    cplRow.font = { bold: true };
+
+    summarySheet.addRow([]);
+
+    // === OVERALL BILLING SUMMARY ===
+    const flatBillingTotalResult = await db.query(
+      'SELECT COALESCE(SUM(total_cost), 0) as total FROM flat_billing WHERE monthly_record_id = $1',
+      [req.params.monthlyRecordId]
+    );
+    const totalFlatBilling = Math.round(parseFloat(flatBillingTotalResult.rows[0].total) * 100) / 100;
+
+    const billingSummaryHeader = summarySheet.addRow(['Overall Billing Summary']);
+    billingSummaryHeader.font = { bold: true };
+    billingSummaryHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
+
+    const totalBillingRow = summarySheet.addRow(['Total Flat Billing (₹)', totalFlatBilling]);
+    totalBillingRow.font = { bold: true };
+
+    summarySheet.addRow(['Note: Billing = Cost Per Litre × Consumption × Slab Multiplier']);
 
     // === CONSUMPTION SHEET ===
     const consumptionSheet = workbook.addWorksheet('Consumption');
