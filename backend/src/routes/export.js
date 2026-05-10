@@ -276,6 +276,72 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       totalRow.font = { bold: true };
     }
 
+    // === COSTS & SOURCES SHEET (matches the "Costs & Sources" tab in the UI) ===
+    const costsSheet = workbook.addWorksheet('Costs & Sources');
+    costsSheet.columns = [
+      { width: 30 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 16 }, { width: 18 },
+    ];
+
+    // --- Section 1: Cost Items ---
+    const costsTitle = costsSheet.addRow(['Cost Items']);
+    costsTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
+
+    const costsHeader = costsSheet.addRow(['Item', 'Amount (₹)']);
+    costsHeader.font = { bold: true };
+    costsHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+
+    costItems.rows.forEach(ci => {
+      costsSheet.addRow([ci.item_name, parseFloat(ci.amount)]);
+    });
+    if (costItems.rows.length === 0) {
+      costsSheet.addRow(['No cost items added.']);
+    }
+
+    costsSheet.addRow([]);
+
+    // --- Section 2: Water Source Readings ---
+    // Fetch all water sources with their readings for this month (all fields)
+    const allSourceReadings = await db.query(`
+      SELECT
+        ws.name AS source_name,
+        ws.source_type,
+        wsr.start_reading,
+        wsr.end_reading,
+        wsr.unit_count,
+        wsr.cost_per_unit,
+        wsr.total_cost,
+        wsr.consumption_litres
+      FROM water_sources ws
+      LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
+      ORDER BY ws.source_type, ws.name
+    `, [req.params.monthlyRecordId]);
+
+    const sourcesTitle = costsSheet.addRow(['Water Source Readings']);
+    sourcesTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
+
+    const sourcesHeader = costsSheet.addRow([
+      'Source', 'Start', 'End / Count', 'Cost/Unit (₹)', 'Total Cost (₹)', 'Consumption (L)',
+    ]);
+    sourcesHeader.font = { bold: true };
+    sourcesHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+
+    allSourceReadings.rows.forEach(wsr => {
+      const isBorewell = wsr.source_type === 'borewell';
+      costsSheet.addRow([
+        wsr.source_name,
+        isBorewell ? (wsr.start_reading !== null ? parseFloat(wsr.start_reading) : '-') : '-',
+        isBorewell
+          ? (wsr.end_reading !== null ? parseFloat(wsr.end_reading) : '-')
+          : (wsr.unit_count !== null ? parseFloat(wsr.unit_count) : '-'),
+        isBorewell ? '-' : (wsr.cost_per_unit !== null ? parseFloat(wsr.cost_per_unit) : '-'),
+        wsr.total_cost !== null ? parseFloat(wsr.total_cost) : '-',
+        wsr.consumption_litres !== null ? parseFloat(wsr.consumption_litres) : '-',
+      ]);
+    });
+    if (allSourceReadings.rows.length === 0) {
+      costsSheet.addRow(['No water source readings yet.']);
+    }
+
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
 
