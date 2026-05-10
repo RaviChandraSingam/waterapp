@@ -29,13 +29,20 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     //   Row 9+: cost items
     const summarySheet = workbook.addWorksheet('Summary');
     summarySheet.columns = [
-      { width: 45 }, { width: 15 }, { width: 15 }, { width: 15 },
+      { width: 55 }, { width: 18 }, { width: 18 }, { width: 18 },
     ];
 
-    summarySheet.addRow(['WATER INPUT']);                                          // row 1
-    summarySheet.addRow(['', fmt(record.period_start_date), fmt(record.period_end_date)]); // row 2
+    // === WATER INPUT (matches Overview page) ===
+    // Row 1: section title
+    const waterInputTitle = summarySheet.addRow(['WATER INPUT']);
+    waterInputTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
 
-    // Rows 3-6: borewells in the fixed order the importer expects
+    // Row 2: column headers — B2/C2 hold the dates (used by importer); A2/D2 are labels only
+    const waterInputHeaders = summarySheet.addRow(['Source', fmt(record.period_start_date), fmt(record.period_end_date), 'Consumption (L)']);
+    waterInputHeaders.font = { bold: true };
+    waterInputHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+
+    // Rows 3-6: borewells in fixed import order
     const BOREWELL_IMPORT_ORDER = ['Ablock New Borewell', 'A block Borewell', 'C block Borewell', 'D block Borewell'];
     const borewellResult = await db.query(`
       SELECT ws.name, wsr.start_reading, wsr.end_reading, wsr.consumption_litres
@@ -43,7 +50,6 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
       WHERE ws.source_type = 'borewell'
     `, [req.params.monthlyRecordId]);
-    // Ensure only one reading per borewell name, and never duplicate readings
     const borewellMap = new Map();
     borewellResult.rows.forEach(r => {
       if (r.name && !borewellMap.has(r.name)) borewellMap.set(r.name, r);
@@ -57,7 +63,9 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       }
     });
 
-    // Rows 7-8: tankers (always 2 rows so downstream rows stay aligned)
+    // Rows 7-8: tankers — col B = capacity (12000), col C = unit count (matching Overview: Capacity | Count)
+    // Importer reads: if B >= 12000 then count = C, else count = B — so this is still importable
+    const TANKER_CAPACITY = 12000;
     const tankerResult = await db.query(`
       SELECT ws.name, wsr.unit_count, wsr.consumption_litres, wsr.total_cost
       FROM water_sources ws
@@ -68,26 +76,31 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     let tankerRowsWritten = 0;
     tankerResult.rows.forEach(t => {
       if (tankerRowsWritten < 2) {
-        let costPerTanker = '';
-        if (t.unit_count && t.total_cost) {
-          const n = parseFloat(t.unit_count);
-          const total = parseFloat(t.total_cost);
-          if (n > 0) costPerTanker = Math.round((total / n) * 100) / 100;
-        }
         summarySheet.addRow([
           t.name,
-          t.unit_count !== null ? parseFloat(t.unit_count) : '',
-          costPerTanker,
-          t.consumption_litres !== null ? parseFloat(t.consumption_litres) : ''
+          TANKER_CAPACITY,                                                          // Capacity in col B
+          t.unit_count !== null ? parseFloat(t.unit_count) : '',                   // Count in col C
+          t.consumption_litres !== null ? parseFloat(t.consumption_litres) : '',   // Consumption in col D
         ]);
         tankerRowsWritten++;
       }
     });
     while (tankerRowsWritten < 2) { summarySheet.addRow(['', '', '', '']); tankerRowsWritten++; }
 
-    summarySheet.addRow(['TOTAL Input (Litres)', '', '', parseFloat(record.total_water_input || 0)]);
+    // Row 9: TOTAL in Ltr (matching Overview label)
+    const totalInputRow = summarySheet.addRow(['TOTAL in Ltr', '', '', parseFloat(record.total_water_input || 0)]);
+    totalInputRow.font = { bold: true };
+    totalInputRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FF' } };
+
     summarySheet.addRow([]);
-    summarySheet.addRow(['WATER USAGE']);
+
+    // === WATER USAGE (matches Overview page) ===
+    const waterUsageTitle = summarySheet.addRow(['WATER USAGE']);
+    waterUsageTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
+
+    const waterUsageHeaders = summarySheet.addRow(['Block / Area', '', '', 'Consumption (L)']);
+    waterUsageHeaders.font = { bold: true };
+    waterUsageHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
 
     // Block totals
     const blockTotals = await db.query(`
@@ -97,7 +110,6 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       LEFT JOIN flat_billing fb ON f.id = fb.flat_id AND fb.monthly_record_id = $1
       GROUP BY b.id, b.display_name ORDER BY b.name
     `, [req.params.monthlyRecordId]);
-
     blockTotals.rows.forEach(bt => {
       summarySheet.addRow([bt.display_name + ' Total', '', '', parseFloat(bt.total)]);
     });
@@ -108,60 +120,68 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       [req.params.monthlyRecordId]
     );
     summarySheet.addRow(['Common Usage Total', '', '', parseFloat(commonTotal.rows[0].total)]);
-    summarySheet.addRow(['TOTAL Usage (Litres)', '', '', parseFloat(record.total_water_usage || 0)]);
+
+    const totalUsageRow = summarySheet.addRow(['TOTAL in Ltr', '', '', parseFloat(record.total_water_usage || 0)]);
+    totalUsageRow.font = { bold: true };
+    totalUsageRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FF' } };
+
     summarySheet.addRow([]);
 
-    // Cost items
+    // === COST SUMMARY (matches Overview page) ===
+    const costSummaryTitle = summarySheet.addRow(['COST SUMMARY']);
+    costSummaryTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
+
+    const costSummaryHeaders = summarySheet.addRow(['Item', 'Cost (₹)']);
+    costSummaryHeaders.font = { bold: true };
+    costSummaryHeaders.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
+
+    // Regular cost items (Salt, E Bill 1, E Bill 2, and any extras)
     const costItems = await db.query(
       'SELECT * FROM cost_items WHERE monthly_record_id = $1 ORDER BY item_name',
       [req.params.monthlyRecordId]
     );
-    summarySheet.addRow(['Items', 'Cost']);
     costItems.rows.forEach(ci => {
       summarySheet.addRow([ci.item_name, parseFloat(ci.amount)]);
     });
-    summarySheet.addRow(['Cost per Litre', parseFloat(record.cost_per_litre || 0)]);
-    summarySheet.addRow([]);
 
-    // === COST PER LITRE CALCULATION DETAILS ===
+    // Tanker bills shown separately (matching Overview: "{source_name} bill")
+    tankerResult.rows.forEach(t => {
+      if (t.name && t.total_cost !== null) {
+        summarySheet.addRow([`${t.name} bill`, parseFloat(t.total_cost)]);
+      }
+    });
+
+    // Total Cost = items + tanker bills
     const totalItemsCost = costItems.rows.reduce((sum, ci) => sum + parseFloat(ci.amount || 0), 0);
     const totalTankerCost = tankerResult.rows.reduce((sum, t) => sum + parseFloat(t.total_cost || 0), 0);
     const overallTotalCost = totalItemsCost + totalTankerCost;
+
+    const totalCostRow = summarySheet.addRow(['Total Cost', Math.round(overallTotalCost * 100) / 100]);
+    totalCostRow.font = { bold: true };
+    totalCostRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FF' } };
+
+    // Cost per Litre with inline formula (matching Overview breakdown)
     const totalWaterInput = parseFloat(record.total_water_input || 0);
     const computedCostPerLitre = totalWaterInput > 0 ? overallTotalCost / totalWaterInput : 0;
-
-    const calcHeader = summarySheet.addRow(['Cost Per Litre Calculation']);
-    calcHeader.font = { bold: true };
-    calcHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };
-
-    summarySheet.addRow(['Total Items Cost (₹)', Math.round(totalItemsCost * 100) / 100]);
-    summarySheet.addRow(['Total Tanker Cost (₹)', Math.round(totalTankerCost * 100) / 100]);
-
-    const totalCostRow = summarySheet.addRow(['Total Overall Cost (₹)', Math.round(overallTotalCost * 100) / 100]);
-    totalCostRow.font = { bold: true };
-
-    summarySheet.addRow(['Total Water Input (Litres)', totalWaterInput]);
-
-    const cplRow = summarySheet.addRow(['Cost Per Litre (Total Cost ÷ Total Input)', Math.round(computedCostPerLitre * 10000) / 10000]);
+    const cplLabel = `Cost per Litre  =  Total Cost ÷ Total Water Input  =  ₹${Math.round(overallTotalCost * 100) / 100} ÷ ${totalWaterInput.toLocaleString()} L`;
+    const cplRow = summarySheet.addRow([cplLabel, Math.round(computedCostPerLitre * 1000000) / 1000000]);
     cplRow.font = { bold: true };
+    cplRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF8E1' } };
 
     summarySheet.addRow([]);
 
     // === OVERALL BILLING SUMMARY ===
+    const billingSummaryTitle = summarySheet.addRow(['Overall Billing Summary']);
+    billingSummaryTitle.font = { bold: true, color: { argb: 'FF1A6EB5' }, size: 12 };
+
     const flatBillingTotalResult = await db.query(
       'SELECT COALESCE(SUM(total_cost), 0) as total FROM flat_billing WHERE monthly_record_id = $1',
       [req.params.monthlyRecordId]
     );
     const totalFlatBilling = Math.round(parseFloat(flatBillingTotalResult.rows[0].total) * 100) / 100;
 
-    const billingSummaryHeader = summarySheet.addRow(['Overall Billing Summary']);
-    billingSummaryHeader.font = { bold: true };
-    billingSummaryHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2EFDA' } };
-
     const totalBillingRow = summarySheet.addRow(['Total Flat Billing (₹)', totalFlatBilling]);
     totalBillingRow.font = { bold: true };
-
-    summarySheet.addRow(['Note: Billing = Cost Per Litre × Consumption × Slab Multiplier']);
 
     // === CONSUMPTION SHEET ===
     const consumptionSheet = workbook.addWorksheet('Consumption');
