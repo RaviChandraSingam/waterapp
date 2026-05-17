@@ -424,7 +424,19 @@ export default function ReadingsCapturePage() {
                           <td>{a.user_name} ({a.username})</td>
                           <td><span className={`badge ${a.action === 'capture_reading' ? 'badge-success' : 'badge-warning'}`}>{a.action.replace(/_/g, ' ')}</span></td>
                           <td style={{ fontSize: '0.85em' }}>{oldVals ? `${oldVals.reading_value}` : '-'}</td>
-                          <td style={{ fontSize: '0.85em' }}>{newVals ? `${newVals.reading_value} (Flat: ${newVals.flat_id?.substring(0,8)}..., Seq: ${newVals.reading_sequence})` : '-'}</td>
+                          <td style={{ fontSize: '0.85em' }}>
+                            {newVals ? (
+                              <>
+                                {newVals.reading_value}
+                                {newVals.flat_number
+                                  ? ` (Flat: ${newVals.flat_number}${newVals.reading_sequence ? ", Seq: " + newVals.reading_sequence : ''})`
+                                  : newVals.flat_id
+                                    ? ` (Flat: ${newVals.flat_id.substring(0,8)}...${newVals.reading_sequence ? ", Seq: " + newVals.reading_sequence : ''})`
+                                    : ''
+                                }
+                              </>
+                            ) : '-'}
+                          </td>
                         </tr>
                       );
                     })}

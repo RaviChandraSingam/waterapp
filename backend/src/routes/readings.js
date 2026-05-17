@@ -173,6 +173,10 @@ router.post('/', authenticate, authorize('plumber', 'accountant', 'watercommitte
         [monthlyRecordId, flatId, readingSequence]
       );
 
+      // Fetch flat_number for audit log
+      const flatRow = await db.query('SELECT flat_number FROM flats WHERE id = $1', [flatId]);
+      const flatNumber = flatRow.rows.length > 0 ? flatRow.rows[0].flat_number : null;
+
       const result = await db.query(`
         INSERT INTO meter_readings (monthly_record_id, flat_id, reading_date, reading_value, reading_sequence, captured_by, has_warning, warning_message)
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
@@ -190,7 +194,7 @@ router.post('/', authenticate, authorize('plumber', 'accountant', 'watercommitte
         'INSERT INTO audit_log (user_id, action, entity_type, entity_id, old_values, new_values) VALUES ($1, $2, $3, $4, $5, $6)',
         [req.user.id, action, 'meter_readings', result.rows[0].id,
          oldValues ? JSON.stringify(oldValues) : null,
-         JSON.stringify({ reading_value: readingValue, reading_date: readingDate, flat_id: flatId, reading_sequence: readingSequence })]
+         JSON.stringify({ reading_value: readingValue, reading_date: readingDate, flat_id: flatId, flat_number: flatNumber, reading_sequence: readingSequence })]
       );
 
       if (hasWarning) {

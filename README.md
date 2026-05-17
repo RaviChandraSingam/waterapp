@@ -58,7 +58,7 @@ A complete water consumption tracking, billing, and management system for an apa
 - **Analytics Page** — Detailed consumption and billing analytics across periods
 
 ### AI Chatbot
-- **Gemini-Powered Assistant** — Ask questions about water consumption, billing history, and anomalies in natural language. Powered by Google Gemini 1.5 Flash. Accessible via the chat icon in the web app.
+- **Gemini-Powered Assistant** — Ask questions about water consumption, billing history, and anomalies in natural language. Powered by Google Gemini 2.5 Flash. Accessible via the chat icon in the web app.
 
 ### User Management
 - **Role Assignment** — Create users with roles: Guest, Plumber, Accountant, Water Committee
