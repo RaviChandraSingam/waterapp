@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"name": "waterapp",
+			"path": "."
+		}
+	],
+	"settings": {
+		"chat.agent.maxRequests": 400
+	}
+}

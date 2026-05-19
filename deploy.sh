@@ -51,8 +51,8 @@ git_push() {
   info "Committing and pushing changes..."
   cd "$REPO_ROOT"
 
-  # Stage all tracked modified files
-  git add backend/src web/src
+  # Stage all tracked modified files (including deploy.sh and any other changes)
+  git add -A
   if git diff --cached --quiet; then
     warn "No staged changes — skipping commit."
   else
@@ -69,7 +69,7 @@ deploy_backend() {
   cd "$REPO_ROOT/backend"
 
   info "Building Docker image: ${BACKEND_IMAGE}"
-  docker build -t "$BACKEND_IMAGE" .
+  docker build --platform linux/amd64 -t "$BACKEND_IMAGE" .
 
   info "Pushing image to Artifact Registry..."
   docker push "$BACKEND_IMAGE"
