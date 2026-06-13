@@ -18,6 +18,47 @@ router.get('/', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/common-areas
+router.post('/', authenticate, authorize('watercommittee'), async (req, res) => {
+  try {
+    const { name, description, isActive = true } = req.body;
+    if (!name || typeof name !== 'string' || !name.trim()) {
+      return res.status(400).json({ error: 'name is required' });
+    }
+
+    const result = await db.query(
+      'INSERT INTO common_areas (name, description, is_active) VALUES ($1, $2, $3) RETURNING *',
+      [name.trim(), description || null, isActive]
+    );
+
+    cache.invalidate('common_areas');
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// PUT /api/common-areas/:id
+router.put('/:id', authenticate, authorize('watercommittee'), async (req, res) => {
+  try {
+    const { name, description, isActive } = req.body;
+    const result = await db.query(
+      `UPDATE common_areas SET name = COALESCE(NULLIF($1, ''), name), description = COALESCE($2, description), is_active = COALESCE($3, is_active)
+       WHERE id = $4 RETURNING *`,
+      [name, description, isActive, req.params.id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Common area not found' });
+    }
+
+    cache.invalidate('common_areas');
+    res.json(result.rows[0]);
+  } catch (err) {
+    res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // GET /api/common-areas/readings/:monthlyRecordId
 router.get('/readings/:monthlyRecordId', authenticate, async (req, res) => {
   try {

@@ -12,6 +12,9 @@ export default function MonthlyRecordDetailPage() {
   const [readings, setReadings] = useState([]);
   const [billing, setBilling] = useState([]);
   const [commonReadings, setCommonReadings] = useState([]);
+  const [allCommonAreas, setAllCommonAreas] = useState([]);
+  const [editingCommonAreas, setEditingCommonAreas] = useState(false);
+  const [editCommonReadings, setEditCommonReadings] = useState([]);
   const [blocks, setBlocks] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeBlock, setActiveBlock] = useState(null);
@@ -31,18 +34,20 @@ export default function MonthlyRecordDetailPage() {
 
   async function loadData() {
     try {
-      const [rec, bl, rd, cr, bill] = await Promise.all([
+      const [rec, bl, rd, cr, bill, areas] = await Promise.all([
         api.getMonthlyRecord(id),
         api.getBlocks(),
         api.getReadings(id),
         api.getCommonAreaReadings(id),
         api.getBilling(id),
+        api.getCommonAreas(),
       ]);
       setRecord(rec);
       setBlocks(bl);
       setReadings(rd);
       setCommonReadings(cr);
       setBilling(bill);
+      setAllCommonAreas(areas);
       if (bl.length > 0 && !activeBlock) setActiveBlock(bl[0].id);
     } catch (err) {
       console.error(err);
@@ -118,6 +123,64 @@ export default function MonthlyRecordDetailPage() {
       await api.updateWaterSources(id, editSourceReadings);
       setMessage('Costs & sources saved!');
       setEditingCosts(false);
+      loadData();
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    }
+  }
+
+  function startEditCommonAreas() {
+    const rows = commonReadings.map(cr => ({
+      id: cr.id,
+      monthlyRecordId: id,
+      commonAreaId: cr.common_area_id,
+      startReading: cr.start_reading ?? '',
+      endReading: cr.end_reading ?? '',
+    }));
+    setEditCommonReadings(rows.length > 0 ? rows : [{ monthlyRecordId: id, commonAreaId: allCommonAreas[0]?.id || '', startReading: '', endReading: '' }]);
+    setEditingCommonAreas(true);
+  }
+
+  function cancelEditCommonAreas() {
+    setEditingCommonAreas(false);
+    setEditCommonReadings([]);
+  }
+
+  function addCommonReadingRow() {
+    setEditCommonReadings(prev => [...prev, { monthlyRecordId: id, commonAreaId: allCommonAreas[0]?.id || '', startReading: '', endReading: '' }]);
+  }
+
+  function handleCommonReadingChange(index, field, value) {
+    setEditCommonReadings(prev => {
+      const next = [...prev];
+      next[index] = { ...next[index], [field]: value };
+      return next;
+    });
+  }
+
+  async function saveCommonReadings() {
+    try {
+      const readingsToSave = editCommonReadings
+        .filter(r => r.commonAreaId)
+        .map(r => {
+          const startReading = parseFloat(r.startReading);
+          const endReading = parseFloat(r.endReading);
+          return {
+            monthlyRecordId: r.monthlyRecordId,
+            commonAreaId: r.commonAreaId,
+            startReading,
+            endReading,
+          };
+        });
+
+      if (readingsToSave.some(r => Number.isNaN(r.startReading) || Number.isNaN(r.endReading))) {
+        return setMessage('Please enter valid start and end readings for all rows.');
+      }
+
+      await api.captureCommonAreaReadings(readingsToSave);
+      setMessage('Common area readings saved successfully.');
+      setEditingCommonAreas(false);
+      setEditCommonReadings([]);
       loadData();
     } catch (err) {
       setMessage(`Error: ${err.message}`);
@@ -210,6 +273,7 @@ export default function MonthlyRecordDetailPage() {
   const canCalculate = (user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
   const canExport = user.role !== 'plumber';
   const canUpload = (user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'reviewed' && record.status !== 'final';
+  const canEditCommonAreas = (user.role === 'plumber' || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
 
   return (
     <div>
@@ -487,26 +551,100 @@ export default function MonthlyRecordDetailPage() {
 
       {activeTab === 'common' && (
         <div className="card">
-          <h3 style={{ marginBottom: 15 }}>Common Area Readings</h3>
-          <table>
-            <thead>
-              <tr><th>Area</th><th style={{ textAlign: 'right' }}>Start Reading</th><th style={{ textAlign: 'right' }}>End Reading</th><th style={{ textAlign: 'right' }}>Consumption (L)</th><th>Captured By</th></tr>
-            </thead>
-            <tbody>
-              {commonReadings.map(cr => (
-                <tr key={cr.id}>
-                  <td>{cr.area_name}</td>
-                  <td style={{ textAlign: 'right' }}>{Number(cr.start_reading).toFixed(3)}</td>
-                  <td style={{ textAlign: 'right' }}>{Number(cr.end_reading).toFixed(3)}</td>
-                  <td style={{ textAlign: 'right' }}>{Number(cr.consumption_litres).toLocaleString()}</td>
-                  <td>{cr.captured_by_name || '-'}</td>
-                </tr>
-              ))}
-              {commonReadings.length === 0 && (
-                <tr><td colSpan={5} className="empty-state">No common area readings yet.</td></tr>
-              )}
-            </tbody>
-          </table>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+            <h3>Common Area Readings</h3>
+            {canEditCommonAreas && !editingCommonAreas && (
+              <button className="btn btn-primary" onClick={startEditCommonAreas}>Edit Common Area Entries</button>
+            )}
+          </div>
+
+          {editingCommonAreas ? (
+            <>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Area</th>
+                    <th style={{ textAlign: 'right' }}>Start Reading</th>
+                    <th style={{ textAlign: 'right' }}>End Reading</th>
+                    <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                    <th style={{ width: 140 }}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {editCommonReadings.map((row, index) => {
+                    const selectedArea = allCommonAreas.find(a => a.id === row.commonAreaId);
+                    const consumption = Number(row.endReading) - Number(row.startReading);
+                    return (
+                      <tr key={`${row.commonAreaId || 'new'}-${index}`}>
+                        <td>
+                          <select
+                            value={row.commonAreaId || ''}
+                            onChange={e => handleCommonReadingChange(index, 'commonAreaId', e.target.value)}
+                            style={{ width: '100%' }}
+                          >
+                            <option value="">Select common area</option>
+                            {allCommonAreas.map(area => (
+                              <option key={area.id} value={area.id}>{area.name}</option>
+                            ))}
+                          </select>
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={row.startReading}
+                            onChange={e => handleCommonReadingChange(index, 'startReading', e.target.value)}
+                            style={{ width: '100%', textAlign: 'right' }}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          <input
+                            type="number"
+                            step="0.001"
+                            value={row.endReading}
+                            onChange={e => handleCommonReadingChange(index, 'endReading', e.target.value)}
+                            style={{ width: '100%', textAlign: 'right' }}
+                          />
+                        </td>
+                        <td style={{ textAlign: 'right' }}>{Number.isNaN(consumption) ? '-' : consumption.toLocaleString()}</td>
+                        <td>
+                          <button className="btn btn-sm btn-secondary" onClick={() => setEditCommonReadings(prev => prev.filter((_, i) => i !== index))}>Remove</button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {editCommonReadings.length === 0 && (
+                    <tr><td colSpan={5} className="empty-state">No entries. Click add row to start.</td></tr>
+                  )}
+                </tbody>
+              </table>
+              <div style={{ marginTop: 12, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button className="btn btn-primary" onClick={saveCommonReadings}>Save Changes</button>
+                <button className="btn btn-secondary" onClick={cancelEditCommonAreas}>Cancel</button>
+                <button className="btn btn-sm" onClick={addCommonReadingRow}>+ Add row</button>
+              </div>
+            </>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Area</th><th style={{ textAlign: 'right' }}>Start Reading</th><th style={{ textAlign: 'right' }}>End Reading</th><th style={{ textAlign: 'right' }}>Consumption (L)</th><th>Captured By</th></tr>
+              </thead>
+              <tbody>
+                {commonReadings.map(cr => (
+                  <tr key={cr.id}>
+                    <td>{cr.area_name}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(cr.start_reading).toFixed(3)}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(cr.end_reading).toFixed(3)}</td>
+                    <td style={{ textAlign: 'right' }}>{Number(cr.consumption_litres).toLocaleString()}</td>
+                    <td>{cr.captured_by_name || '-'}</td>
+                  </tr>
+                ))}
+                {commonReadings.length === 0 && (
+                  <tr><td colSpan={5} className="empty-state">No common area readings yet.</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
       )}
 

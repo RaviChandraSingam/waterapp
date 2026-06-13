@@ -4,17 +4,20 @@ import { api } from '../services/api';
 export default function ConfigPage() {
   const [billingConfig, setBillingConfig] = useState([]);
   const [waterSources, setWaterSources] = useState([]);
+  const [commonAreas, setCommonAreas] = useState([]);
   const [loading, setLoading] = useState(true);
   const [editItem, setEditItem] = useState(null);
+  const [editCommonArea, setEditCommonArea] = useState(null);
   const [saveMsg, setSaveMsg] = useState('');
 
   useEffect(() => { load(); }, []);
 
   async function load() {
     setLoading(true);
-    const [config, sources] = await Promise.all([api.getConfig(), api.getWaterSources()]);
+    const [config, sources, areas] = await Promise.all([api.getConfig(), api.getWaterSources(), api.getCommonAreas()]);
     setBillingConfig(config);
     setWaterSources(sources);
+    setCommonAreas(areas);
     setLoading(false);
   }
 
@@ -27,6 +30,34 @@ export default function ConfigPage() {
       load();
     } catch (err) {
       alert('Failed to save: ' + err.message);
+    }
+  }
+
+  async function handleSaveCommonArea(area) {
+    try {
+      if (!area.name || !area.name.trim()) {
+        return alert('Common area name is required');
+      }
+
+      if (area.id) {
+        await api.updateCommonArea(area.id, {
+          name: area.name.trim(),
+          description: area.description,
+          isActive: area.is_active,
+        });
+      } else {
+        await api.createCommonArea({
+          name: area.name.trim(),
+          description: area.description,
+          isActive: area.is_active !== false,
+        });
+      }
+      setSaveMsg('Saved!');
+      setTimeout(() => setSaveMsg(''), 2000);
+      setEditCommonArea(null);
+      load();
+    } catch (err) {
+      alert('Failed to save common area: ' + err.message);
     }
   }
 
@@ -128,6 +159,80 @@ export default function ConfigPage() {
                 </td>
               </tr>
             ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="card">
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <h2>Common Areas</h2>
+          <button className="btn btn-sm btn-primary" onClick={() => setEditCommonArea({ name: '', description: '', is_active: true })}>
+            + Add Common Area
+          </button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Description</th>
+              <th>Status</th>
+              <th style={{ width: 180 }}>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {commonAreas.map(area => (
+              editCommonArea?.id === area.id ? (
+                <tr key={area.id}>
+                  <td>
+                    <input
+                      type="text"
+                      value={editCommonArea.name}
+                      onChange={e => setEditCommonArea({ ...editCommonArea, name: e.target.value })}
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td>
+                    <input
+                      type="text"
+                      value={editCommonArea.description || ''}
+                      onChange={e => setEditCommonArea({ ...editCommonArea, description: e.target.value })}
+                      style={{ width: '100%' }}
+                    />
+                  </td>
+                  <td>
+                    <select
+                      value={editCommonArea.is_active ? 'active' : 'inactive'}
+                      onChange={e => setEditCommonArea({ ...editCommonArea, is_active: e.target.value === 'active' })}
+                    >
+                      <option value="active">Active</option>
+                      <option value="inactive">Inactive</option>
+                    </select>
+                  </td>
+                  <td>
+                    <button className="btn btn-sm" onClick={() => handleSaveCommonArea(editCommonArea)}>Save</button>{' '}
+                    <button className="btn btn-sm btn-secondary" onClick={() => setEditCommonArea(null)}>Cancel</button>
+                  </td>
+                </tr>
+              ) : (
+                <tr key={area.id}>
+                  <td style={{ fontWeight: 600 }}>{area.name}</td>
+                  <td>{area.description || '—'}</td>
+                  <td>
+                    <span className={`badge ${area.is_active ? 'badge-success' : 'badge-secondary'}`}>
+                      {area.is_active ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td>
+                    <button className="btn btn-sm btn-secondary" onClick={() => setEditCommonArea(area)}>Edit</button>
+                  </td>
+                </tr>
+              )
+            ))}
+            {commonAreas.length === 0 && (
+              <tr>
+                <td colSpan={4} className="empty-state">No common areas defined yet.</td>
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

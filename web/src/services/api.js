@@ -62,6 +62,8 @@ export const api = {
 
   // Common Areas
   getCommonAreas: () => request('/common-areas'),
+  createCommonArea: (data) => request('/common-areas', { method: 'POST', body: JSON.stringify(data) }),
+  updateCommonArea: (id, data) => request(`/common-areas/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   getCommonAreaReadings: (monthlyRecordId) => request(`/common-areas/readings/${monthlyRecordId}`),
   captureCommonAreaReadings: (readings) => request('/common-areas/readings', { method: 'POST', body: JSON.stringify({ readings }) }),
 
