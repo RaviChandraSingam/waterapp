@@ -269,11 +269,11 @@ export default function MonthlyRecordDetailPage() {
     watercommittee: record.status === 'reviewed' ? 'final' : (record.status === 'final' ? 'reviewed' : (record.status === 'captured' ? 'reviewed' : (record.status === 'draft' ? 'captured' : null))),
   };
 
-  const nextStatus = canChangeStatus[user.role];
-  const canCalculate = (user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
-  const canExport = user.role !== 'plumber';
-  const canUpload = (user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'reviewed' && record.status !== 'final';
-  const canEditCommonAreas = (user.role === 'plumber' || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
+  const nextStatus = user.isSuperadmin ? canChangeStatus.watercommittee : canChangeStatus[user.role];
+  const canCalculate = (user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
+  const canExport = user.isSuperadmin || user.role !== 'plumber';
+  const canUpload = (user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'reviewed' && record.status !== 'final';
+  const canEditCommonAreas = (user.isSuperadmin || user.role === 'plumber' || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
 
   return (
     <div>
@@ -698,7 +698,7 @@ export default function MonthlyRecordDetailPage() {
 
       {activeTab === 'costs' && (
         <div>
-          {(user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final' && (
+          {(user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final' && (
             <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
               {!editingCosts ? (
                 <button className="btn btn-primary" onClick={startEditCosts}>Edit Costs & Sources</button>
