@@ -212,6 +212,10 @@ th {
 
 tr:hover { background: #f8f9fa; }
 
+.highlight-row { background: rgba(255, 243, 205, 0.9); }
+.saved-row { background: #f4fbff; }
+.variation-table textarea { min-width: 220px; max-width: 280px; resize: vertical; }
+
 /* Buttons */
 .btn {
   padding: 8px 16px;

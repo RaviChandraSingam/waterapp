@@ -10,6 +10,7 @@ import BillingPage from './pages/BillingPage';
 import ConfigPage from './pages/ConfigPage';
 import UsersPage from './pages/UsersPage';
 import PendingItemsPage from './pages/PendingItemsPage';
+import VariationReportPage from './pages/VariationReportPage';
 import ChatBot from './components/ChatBot';
 
 const AuthContext = createContext(null);
@@ -68,6 +69,7 @@ function App() {
               <Route path="/" element={<DashboardPage />} />
               <Route path="/records" element={<MonthlyRecordsPage />} />
               <Route path="/records/:id" element={<MonthlyRecordDetailPage />} />
+              <Route path="/variations" element={<VariationReportPage />} />
               <Route path="/capture" element={<ReadingsCapturePage />} />
               <Route path="/billing" element={<BillingPage />} />
               <Route path="/config" element={<ConfigPage />} />
@@ -129,6 +131,7 @@ function Sidebar() {
           <div className="section-title">Main</div>
           <Link to="/" onClick={close} className={isActive('/') && location.pathname === '/' ? 'active' : ''}>Dashboard</Link>
           <Link to="/records" onClick={close} className={isActive('/records') ? 'active' : ''}>Monthly Records</Link>
+          <Link to="/variations" onClick={close} className={isActive('/variations') ? 'active' : ''}>Variation Report</Link>
           <Link to="/pending" onClick={close} className={isActive('/pending') ? 'active' : ''}>Pending Items</Link>
 
           {(user.role === 'plumber' || user.role === 'watercommittee' || user.role === 'accountant') && (
