@@ -50,6 +50,15 @@ export const api = {
   updateCostItems: (id, costItems) => request(`/monthly-records/${id}/cost-items`, { method: 'PUT', body: JSON.stringify({ costItems }) }),
   updateWaterSources: (id, readings) => request(`/monthly-records/${id}/water-sources`, { method: 'PUT', body: JSON.stringify({ readings }) }),
   calculateBilling: (id) => request(`/monthly-records/${id}/calculate`, { method: 'POST' }),
+  getVariationReport: (monthlyRecordIds) => {
+    const qs = new URLSearchParams();
+    monthlyRecordIds.forEach(id => qs.append('months[]', id));
+    return request(`/variations/report?${qs.toString()}`);
+  },
+  saveVariationException: (data) => request('/variations', { method: 'POST', body: JSON.stringify(data) }),
+  getSavedVariationExceptions: () => request('/variations'),
+  updateVariationException: (id, data) => request(`/variations/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteVariationException: (id) => request(`/variations/${id}`, { method: 'DELETE' }),
 
   // Readings
   getReadings: (monthlyRecordId) => request(`/readings/${monthlyRecordId}`),

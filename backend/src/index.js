@@ -16,6 +16,7 @@ const dashboardRoutes = require('./routes/dashboard');
 const exportRoutes = require('./routes/export');
 const uploadRoutes = require('./routes/upload');
 const pendingItemsRoutes = require('./routes/pendingItems');
+const variationReportsRoutes = require('./routes/variationReports');
 const chatRoutes = require('./routes/chat');
 const analyticsRoutes = require('./routes/analytics');
 
@@ -42,6 +43,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/export', exportRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/pending-items', pendingItemsRoutes);
+app.use('/api/variations', variationReportsRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/analytics', analyticsRoutes);
 
@@ -119,6 +121,29 @@ async function migrateDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    // Create variation_exceptions table
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS variation_exceptions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        monthly_record_ids JSONB NOT NULL,
+        month_labels JSONB NOT NULL,
+        flat_id UUID NOT NULL REFERENCES flats(id),
+        flat_number VARCHAR(10) NOT NULL,
+        block_name VARCHAR(10) NOT NULL,
+        variation_litres NUMERIC NOT NULL,
+        variation_pct NUMERIC,
+        reason TEXT NOT NULL,
+        created_by UUID REFERENCES users(id),
+        updated_by UUID REFERENCES users(id),
+        deleted_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        deleted_at TIMESTAMP
+      );
+    `);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_variation_exceptions_flat ON variation_exceptions(flat_id);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_variation_exceptions_created_by ON variation_exceptions(created_by);`);
+    await db.query(`CREATE INDEX IF NOT EXISTS idx_variation_exceptions_deleted_at ON variation_exceptions(deleted_at);`);
     // Create page_visits table for analytics
     await db.query(`
       CREATE TABLE IF NOT EXISTS page_visits (
