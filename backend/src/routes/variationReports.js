@@ -60,19 +60,23 @@ router.get('/report', authenticate, async (req, res) => {
     const monthKeys = chronologicalMonths.map(r => `${r.year}-${String(r.month).padStart(2, '0')}`);
     const monthLabels = chronologicalMonths.map(r => formatMonthLabel(r.year, r.month));
 
-    const billingResult = await db.query(`
-      SELECT fb.flat_id, f.flat_number, b.name AS block_name,
-             mr.year, mr.month, fb.consumption_litres
-      FROM flat_billing fb
-      JOIN flats f ON fb.flat_id = f.id
+    const readingResult = await db.query(`
+      SELECT f.id AS flat_id, f.flat_number, b.name AS block_name,
+             mr.id AS monthly_record_id, mr.year, mr.month,
+             MIN(CASE WHEN mr2.reading_sequence = 1 THEN mr2.reading_value END) AS start_reading,
+             MAX(CASE WHEN mr2.reading_sequence = 3 THEN mr2.reading_value
+                       WHEN mr2.reading_sequence = 2 THEN mr2.reading_value END) AS end_reading
+      FROM monthly_records mr
+      CROSS JOIN flats f
       JOIN blocks b ON f.block_id = b.id
-      JOIN monthly_records mr ON fb.monthly_record_id = mr.id
-      WHERE fb.monthly_record_id = ANY($1)
+      LEFT JOIN meter_readings mr2 ON mr2.monthly_record_id = mr.id AND mr2.flat_id = f.id
+      WHERE mr.id = ANY($1)
+      GROUP BY f.id, f.flat_number, b.name, mr.id, mr.year, mr.month
       ORDER BY b.name, f.flat_number, mr.year, mr.month
     `, [monthIds]);
 
     const grouped = {};
-    billingResult.rows.forEach(row => {
+    readingResult.rows.forEach(row => {
       const key = row.flat_id;
       if (!grouped[key]) {
         grouped[key] = {
@@ -83,8 +87,10 @@ router.get('/report', authenticate, async (req, res) => {
         };
       }
       const monthKey = `${row.year}-${String(row.month).padStart(2, '0')}`;
-      // Use absolute consumption to avoid negative values caused by meter rollovers
-      grouped[key].values[monthKey] = Math.abs(Number(row.consumption_litres || 0));
+      const startReading = Number(row.start_reading || 0);
+      const endReading = Number(row.end_reading || 0);
+      const consumptionLitres = Math.abs((endReading - startReading) * 1000);
+      grouped[key].values[monthKey] = consumptionLitres;
     });
 
     const rows = Object.values(grouped).map(item => {
