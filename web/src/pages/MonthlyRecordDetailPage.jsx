@@ -273,7 +273,8 @@ export default function MonthlyRecordDetailPage() {
   const canCalculate = (user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
   const canExport = user.isSuperadmin || user.role !== 'plumber';
   const canUpload = (user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'reviewed' && record.status !== 'final';
-  const canEditCommonAreas = (user.isSuperadmin || user.role === 'plumber' || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final';
+  const canCaptureForStatus = user.role === 'plumber' ? record.status === 'draft' : record.status !== 'final';
+  const canEditCaptureData = (user.isSuperadmin || user.role === 'plumber' || user.role === 'accountant' || user.role === 'watercommittee') && canCaptureForStatus;
 
   return (
     <div>
@@ -553,7 +554,7 @@ export default function MonthlyRecordDetailPage() {
         <div className="card">
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
             <h3>Common Area Readings</h3>
-            {canEditCommonAreas && !editingCommonAreas && (
+            {canEditCaptureData && !editingCommonAreas && (
               <button className="btn btn-primary" onClick={startEditCommonAreas}>Edit Common Area Entries</button>
             )}
           </div>
@@ -698,7 +699,7 @@ export default function MonthlyRecordDetailPage() {
 
       {activeTab === 'costs' && (
         <div>
-          {(user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee') && record.status !== 'final' && (
+          {canEditCaptureData && (
             <div style={{ marginBottom: 16, display: 'flex', gap: 8 }}>
               {!editingCosts ? (
                 <button className="btn btn-primary" onClick={startEditCosts}>Edit Costs & Sources</button>

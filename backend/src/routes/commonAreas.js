@@ -5,6 +5,27 @@ const cache = require('../cache');
 
 const router = express.Router();
 
+async function ensureCommonAreaCaptureEditable(monthlyRecordId, user) {
+  const result = await db.query('SELECT status FROM monthly_records WHERE id = $1', [monthlyRecordId]);
+  if (result.rows.length === 0) {
+    const err = new Error('Monthly record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const status = result.rows[0].status;
+  if (user.role === 'plumber' && status !== 'draft') {
+    const err = new Error(`Plumbers can capture common area readings only for draft records. Current status is '${status}'.`);
+    err.statusCode = 400;
+    throw err;
+  }
+  if (user.role !== 'plumber' && status === 'final') {
+    const err = new Error(`Cannot update common area readings — record is in 'final' status.`);
+    err.statusCode = 400;
+    throw err;
+  }
+}
+
 // GET /api/common-areas
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -85,6 +106,11 @@ router.post('/readings', authenticate, authorize('plumber', 'accountant', 'water
       return res.status(400).json({ error: 'readings must be an array' });
     }
 
+    const recordIds = [...new Set(readings.map(r => r.monthlyRecordId))];
+    for (const monthlyRecordId of recordIds) {
+      await ensureCommonAreaCaptureEditable(monthlyRecordId, req.user);
+    }
+
     const results = [];
     for (const reading of readings) {
       const { monthlyRecordId, commonAreaId, startReading, endReading } = reading;
@@ -103,7 +129,7 @@ router.post('/readings', authenticate, authorize('plumber', 'accountant', 'water
 
     res.json(results);
   } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
   }
 });
 

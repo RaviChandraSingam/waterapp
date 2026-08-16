@@ -5,6 +5,29 @@ const { recalculateMonthlyRecord } = require('../helpers/recalculate');
 
 const router = express.Router();
 
+async function ensureCaptureEditable(monthlyRecordId, user) {
+  const result = await db.query('SELECT status FROM monthly_records WHERE id = $1', [monthlyRecordId]);
+  if (result.rows.length === 0) {
+    const err = new Error('Monthly record not found');
+    err.statusCode = 404;
+    throw err;
+  }
+
+  const status = result.rows[0].status;
+  if (user.role === 'plumber' && status !== 'draft') {
+    const err = new Error(`Plumbers can capture this data only for draft records. Current status is '${status}'.`);
+    err.statusCode = 400;
+    throw err;
+  }
+  if (user.role !== 'plumber' && status === 'final') {
+    const err = new Error(`Cannot update — record is in 'final' status`);
+    err.statusCode = 400;
+    throw err;
+  }
+
+  return result.rows[0];
+}
+
 // GET /api/monthly-records
 router.get('/', authenticate, async (req, res) => {
   try {
@@ -182,12 +205,14 @@ router.put('/:id/status', authenticate, async (req, res) => {
 });
 
 // PUT /api/monthly-records/:id/cost-items
-router.put('/:id/cost-items', authenticate, authorize('accountant', 'watercommittee'), async (req, res) => {
+router.put('/:id/cost-items', authenticate, authorize('plumber', 'accountant', 'watercommittee'), async (req, res) => {
   try {
     const { costItems } = req.body;
     if (!Array.isArray(costItems)) {
       return res.status(400).json({ error: 'costItems must be an array' });
     }
+
+    await ensureCaptureEditable(req.params.id, req.user);
 
     // Delete existing and re-insert
     await db.query('DELETE FROM cost_items WHERE monthly_record_id = $1', [req.params.id]);
@@ -205,12 +230,12 @@ router.put('/:id/cost-items', authenticate, authorize('accountant', 'watercommit
     );
     res.json(result.rows);
   } catch (err) {
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
   }
 });
 
 // PUT /api/monthly-records/:id/water-sources
-router.put('/:id/water-sources', authenticate, authorize('accountant', 'watercommittee'), async (req, res) => {
+router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant', 'watercommittee'), async (req, res) => {
   try {
     const { readings } = req.body;
     if (!Array.isArray(readings)) {
@@ -218,10 +243,7 @@ router.put('/:id/water-sources', authenticate, authorize('accountant', 'watercom
     }
 
     // Get current record's year/month for previous month lookup
-    const currentRec = await db.query('SELECT year, month FROM monthly_records WHERE id = $1', [req.params.id]);
-    if (currentRec.rows.length === 0) return res.status(404).json({ error: 'Record not found' });
-
-    const { year, month } = currentRec.rows[0];
+    const { year, month } = await ensureCaptureEditable(req.params.id, req.user);
     const prevRec = await db.query(
       'SELECT id FROM monthly_records WHERE (year < $1 OR (year = $1 AND month < $2)) ORDER BY year DESC, month DESC LIMIT 1',
       [year, month]
@@ -278,7 +300,7 @@ router.put('/:id/water-sources', authenticate, authorize('accountant', 'watercom
     res.json(result.rows);
   } catch (err) {
     console.error('Water sources update error:', err);
-    res.status(500).json({ error: 'Internal server error' });
+    res.status(err.statusCode || 500).json({ error: err.statusCode ? err.message : 'Internal server error' });
   }
 });
 

@@ -144,12 +144,17 @@ router.post('/', authenticate, authorize('plumber', 'accountant', 'watercommitte
       return res.status(400).json({ error: 'readings array is required' });
     }
 
-    // Validate record status — all readings must belong to a record not in reviewed/final
+    // Validate record status. Plumbers capture only draft months; reviewers can
+    // adjust readings until the record is final.
     const recordIds = [...new Set(readings.map(r => r.monthlyRecordId))];
     for (const rid of recordIds) {
       const rec = await db.query('SELECT status FROM monthly_records WHERE id = $1', [rid]);
       if (rec.rows.length === 0) return res.status(404).json({ error: 'Monthly record not found' });
-      if (rec.rows[0].status === 'final') {
+      const status = rec.rows[0].status;
+      if (req.user.role === 'plumber' && status !== 'draft') {
+        return res.status(400).json({ error: `Plumbers can capture readings only for draft records. Current status is '${status}'.` });
+      }
+      if (req.user.role !== 'plumber' && status === 'final') {
         return res.status(400).json({ error: `Cannot capture readings — record is in 'final' status.` });
       }
     }
