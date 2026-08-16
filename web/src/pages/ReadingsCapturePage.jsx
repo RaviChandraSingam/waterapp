@@ -27,20 +27,85 @@ export default function ReadingsCapturePage() {
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [prevMonthReadings, setPrevMonthReadings] = useState([]);
+  const [activeCaptureTab, setActiveCaptureTab] = useState('meters');
+  const [commonAreas, setCommonAreas] = useState([]);
+  const [commonReadings, setCommonReadings] = useState([]);
+  const [waterSources, setWaterSources] = useState([]);
+  const [costItems, setCostItems] = useState([]);
+  const [sourceReadings, setSourceReadings] = useState([]);
+  const [captureDetailsLoading, setCaptureDetailsLoading] = useState(false);
 
   const recordObj = records.find(r => r.id === selectedRecord);
-  const isEditable = recordObj && recordObj.status !== 'final';
-  const canEdit = user.role === 'accountant' || user.role === 'watercommittee';
+  const availableRecords = user.role === 'plumber' ? records.filter(r => r.status === 'draft') : records;
+  const isEditable = !!recordObj && (user.role === 'plumber' ? recordObj.status === 'draft' : recordObj.status !== 'final');
+  const canEdit = user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee';
 
   useEffect(() => {
     async function load() {
-      const [recs, bls] = await Promise.all([api.getMonthlyRecords(), api.getBlocks()]);
+      const [recs, bls, areas, sources] = await Promise.all([
+        api.getMonthlyRecords(),
+        api.getBlocks(),
+        api.getCommonAreas(),
+        api.getWaterSources(),
+      ]);
       setRecords(recs);
       setBlocks(bls);
+      setCommonAreas(areas);
+      setWaterSources(sources);
       setLoading(false);
     }
     load();
   }, []);
+
+  useEffect(() => {
+    if (!selectedRecord) {
+      setCommonReadings([]);
+      setCostItems([]);
+      setSourceReadings([]);
+      return;
+    }
+
+    async function loadCaptureDetails() {
+      setCaptureDetailsLoading(true);
+      try {
+        const [detail, areaReadings] = await Promise.all([
+          api.getMonthlyRecord(selectedRecord),
+          api.getCommonAreaReadings(selectedRecord),
+        ]);
+
+        setCommonReadings(commonAreas.map(area => {
+          const existing = areaReadings.find(r => r.common_area_id === area.id);
+          return {
+            monthlyRecordId: selectedRecord,
+            commonAreaId: area.id,
+            areaName: area.name,
+            startReading: existing?.start_reading ?? '',
+            endReading: existing?.end_reading ?? '',
+          };
+        }));
+        setCostItems((detail.cost_items || []).map(ci => ({ itemName: ci.item_name, amount: ci.amount })));
+        setSourceReadings(waterSources.map(source => {
+          const existing = (detail.water_source_readings || []).find(r => r.water_source_id === source.id);
+          return {
+            waterSourceId: source.id,
+            sourceName: source.name,
+            sourceType: source.source_type,
+            capacityLitres: source.capacity_litres,
+            startReading: existing?.start_reading ?? '',
+            endReading: existing?.end_reading ?? '',
+            unitCount: existing?.unit_count ?? '',
+            costPerUnit: existing?.cost_per_unit ?? source.cost_per_unit ?? '',
+          };
+        }));
+      } catch (err) {
+        setMessage(`Error loading capture details: ${err.message}`);
+      } finally {
+        setCaptureDetailsLoading(false);
+      }
+    }
+
+    loadCaptureDetails();
+  }, [selectedRecord, commonAreas, waterSources]);
 
   useEffect(() => {
     if (selectedBlock) {
@@ -144,6 +209,96 @@ export default function ReadingsCapturePage() {
     }
   }
 
+  async function handleSaveCommonAreas() {
+    if (!isEditable) {
+      setMessage(`Error: Cannot save — record is in '${recordObj?.status}' status`);
+      return;
+    }
+
+    const readings = commonReadings
+      .filter(r => r.startReading !== '' || r.endReading !== '')
+      .map(r => ({
+        monthlyRecordId: selectedRecord,
+        commonAreaId: r.commonAreaId,
+        startReading: parseFloat(r.startReading),
+        endReading: parseFloat(r.endReading),
+      }));
+
+    if (readings.length === 0) {
+      setMessage('No common area readings to save');
+      return;
+    }
+    if (readings.some(r => Number.isNaN(r.startReading) || Number.isNaN(r.endReading))) {
+      setMessage('Error: Enter both start and end readings for each common area row you fill.');
+      return;
+    }
+
+    setSaving(true);
+    setMessage('');
+    try {
+      await api.captureCommonAreaReadings(readings);
+      setMessage(`Saved ${readings.length} common area reading${readings.length === 1 ? '' : 's'} successfully!`);
+      const refreshed = await api.getCommonAreaReadings(selectedRecord);
+      setCommonReadings(commonAreas.map(area => {
+        const existing = refreshed.find(r => r.common_area_id === area.id);
+        return {
+          monthlyRecordId: selectedRecord,
+          commonAreaId: area.id,
+          areaName: area.name,
+          startReading: existing?.start_reading ?? '',
+          endReading: existing?.end_reading ?? '',
+        };
+      }));
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleSaveCostsAndSources() {
+    if (!isEditable) {
+      setMessage(`Error: Cannot save — record is in '${recordObj?.status}' status`);
+      return;
+    }
+
+    const cleanedCosts = costItems
+      .filter(ci => ci.itemName.trim() || ci.amount !== '')
+      .map(ci => ({ itemName: ci.itemName.trim(), amount: parseFloat(ci.amount || 0) }));
+
+    if (cleanedCosts.some(ci => !ci.itemName || Number.isNaN(ci.amount))) {
+      setMessage('Error: Enter a valid name and amount for each cost item.');
+      return;
+    }
+
+    setSaving(true);
+    setMessage('');
+    try {
+      await api.updateCostItems(selectedRecord, cleanedCosts);
+      await api.updateWaterSources(selectedRecord, sourceReadings);
+      setMessage('Saved costs and water source readings successfully!');
+      const detail = await api.getMonthlyRecord(selectedRecord);
+      setCostItems((detail.cost_items || []).map(ci => ({ itemName: ci.item_name, amount: ci.amount })));
+      setSourceReadings(waterSources.map(source => {
+        const existing = (detail.water_source_readings || []).find(r => r.water_source_id === source.id);
+        return {
+          waterSourceId: source.id,
+          sourceName: source.name,
+          sourceType: source.source_type,
+          capacityLitres: source.capacity_litres,
+          startReading: existing?.start_reading ?? '',
+          endReading: existing?.end_reading ?? '',
+          unitCount: existing?.unit_count ?? '',
+          costPerUnit: existing?.cost_per_unit ?? source.cost_per_unit ?? '',
+        };
+      }));
+    } catch (err) {
+      setMessage(`Error: ${err.message}`);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function handleUpdateReading(readingId) {
     if (!editValue) return;
     try {
@@ -196,67 +351,85 @@ export default function ReadingsCapturePage() {
             <label>Monthly Record</label>
             <select value={selectedRecord} onChange={e => setSelectedRecord(e.target.value)}>
               <option value="">Select period...</option>
-              {records.map(r => (
+              {availableRecords.map(r => (
                 <option key={r.id} value={r.id}>
                   {MONTH_NAMES[r.month]} {r.year} ({r.status})
                 </option>
               ))}
             </select>
+            {user.role === 'plumber' && availableRecords.length === 0 && (
+              <div style={{ marginTop: 6, color: '#666', fontSize: '0.86em' }}>No draft monthly records are available.</div>
+            )}
           </div>
-          <div className="form-group">
-            <label>Block</label>
-            <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
-              <option value="">Select block...</option>
-              {blocks.map(b => <option key={b.id} value={b.id}>{b.display_name}</option>)}
-            </select>
-          </div>
-          <div className="form-group">
-            <label>Reading Sequence</label>
-            <select value={readingSequence} onChange={e => setReadingSequence(parseInt(e.target.value))}>
-              <option value={2}>Reading 2 (Mid Month)</option>
-              <option value={3}>Reading 3 (End of Month)</option>
-            </select>
-          </div>
-        </div>
-        <div className="grid-3">
-          <div className="form-group">
-            <label>Reading Date</label>
-            <input type="date" value={readingDate} onChange={e => setReadingDate(e.target.value)} />
-          </div>
-          <div className="form-group">
-            <label>Entry Mode</label>
-            <select value={mode} onChange={e => setMode(e.target.value)}>
-              <option value="bulk">Bulk (all flats)</option>
-              <option value="single">Single flat</option>
-            </select>
-          </div>
-          {mode === 'single' && (
-            <div className="form-group">
-              <label>Flat Number</label>
-              <select value={selectedFlat} onChange={e => {
-                const flatId = e.target.value;
-                setSelectedFlat(flatId);
-                // Pre-fill with current captured value if it exists
-                const existing = existingReadings.find(r => r.flat_id === flatId && r.reading_sequence === readingSequence);
-                setSingleValue(existing ? String(existing.reading_value) : '');
-              }}>
-                <option value="">Select flat...</option>
-                {blockFlats.map(f => {
-                  const existing = existingReadings.find(r => r.flat_id === f.id && r.reading_sequence === readingSequence);
-                  return (
-                    <option key={f.id} value={f.id}>
-                      {f.flat_number} {existing ? `(current: ${existing.reading_value})` : ''}
-                    </option>
-                  );
-                })}
-              </select>
-            </div>
+          {activeCaptureTab === 'meters' && (
+            <>
+              <div className="form-group">
+                <label>Block</label>
+                <select value={selectedBlock} onChange={e => setSelectedBlock(e.target.value)}>
+                  <option value="">Select block...</option>
+                  {blocks.map(b => <option key={b.id} value={b.id}>{b.display_name}</option>)}
+                </select>
+              </div>
+              <div className="form-group">
+                <label>Reading Sequence</label>
+                <select value={readingSequence} onChange={e => setReadingSequence(parseInt(e.target.value))}>
+                  <option value={2}>Reading 2 (Mid Month)</option>
+                  <option value={3}>Reading 3 (End of Month)</option>
+                </select>
+              </div>
+            </>
           )}
         </div>
 
+        {selectedRecord && (
+          <div className="tabs" style={{ marginBottom: 16 }}>
+            <button className={`tab ${activeCaptureTab === 'meters' ? 'active' : ''}`} onClick={() => setActiveCaptureTab('meters')}>Meter Readings</button>
+            <button className={`tab ${activeCaptureTab === 'common' ? 'active' : ''}`} onClick={() => setActiveCaptureTab('common')}>Common Areas</button>
+            <button className={`tab ${activeCaptureTab === 'costs' ? 'active' : ''}`} onClick={() => setActiveCaptureTab('costs')}>Costs &amp; Sources</button>
+          </div>
+        )}
+
+        {activeCaptureTab === 'meters' && (
+          <div className="grid-3">
+            <div className="form-group">
+              <label>Reading Date</label>
+              <input type="date" value={readingDate} onChange={e => setReadingDate(e.target.value)} />
+            </div>
+            <div className="form-group">
+              <label>Entry Mode</label>
+              <select value={mode} onChange={e => setMode(e.target.value)}>
+                <option value="bulk">Bulk (all flats)</option>
+                <option value="single">Single flat</option>
+              </select>
+            </div>
+            {mode === 'single' && (
+              <div className="form-group">
+                <label>Flat Number</label>
+                <select value={selectedFlat} onChange={e => {
+                  const flatId = e.target.value;
+                  setSelectedFlat(flatId);
+                  // Pre-fill with current captured value if it exists
+                  const existing = existingReadings.find(r => r.flat_id === flatId && r.reading_sequence === readingSequence);
+                  setSingleValue(existing ? String(existing.reading_value) : '');
+                }}>
+                  <option value="">Select flat...</option>
+                  {blockFlats.map(f => {
+                    const existing = existingReadings.find(r => r.flat_id === f.id && r.reading_sequence === readingSequence);
+                    return (
+                      <option key={f.id} value={f.id}>
+                        {f.flat_number} {existing ? `(current: ${existing.reading_value})` : ''}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
         {recordObj && !isEditable && (
           <div className="alert alert-warning" style={{ marginTop: 12 }}>
-            This record is in <strong>Final</strong> status. Readings cannot be added or modified.
+            This record is in <strong>{recordObj.status}</strong> status. Capture entries cannot be added or modified.
           </div>
         )}
       </div>
@@ -273,7 +446,7 @@ export default function ReadingsCapturePage() {
       )}
 
       {/* Single flat entry */}
-      {mode === 'single' && selectedRecord && selectedBlock && selectedFlat && (
+      {activeCaptureTab === 'meters' && mode === 'single' && selectedRecord && selectedBlock && selectedFlat && (
         <div className="card">
           <h3>Enter Reading — Flat {flats.find(f => f.id === selectedFlat)?.flat_number}</h3>
           {(() => {
@@ -313,7 +486,7 @@ export default function ReadingsCapturePage() {
       )}
 
       {/* Bulk entry table */}
-      {mode === 'bulk' && selectedRecord && selectedBlock && blockFlats.length > 0 && (
+      {activeCaptureTab === 'meters' && mode === 'bulk' && selectedRecord && selectedBlock && blockFlats.length > 0 && (
         <div className="card">
           <div className="card-header">
             <h3>Enter Readings — {blocks.find(b => b.id === selectedBlock)?.display_name}</h3>
@@ -389,6 +562,217 @@ export default function ReadingsCapturePage() {
               })}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeCaptureTab === 'common' && selectedRecord && (
+        <div className="card">
+          <div className="card-header">
+            <h3>Common Area Readings</h3>
+            <button className="btn btn-primary" onClick={handleSaveCommonAreas} disabled={saving || !isEditable || captureDetailsLoading}>
+              {saving ? 'Saving...' : 'Save Common Areas'}
+            </button>
+          </div>
+          {captureDetailsLoading ? (
+            <div className="empty-state">Loading common areas...</div>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Area</th>
+                  <th style={{ textAlign: 'right' }}>Start Reading</th>
+                  <th style={{ textAlign: 'right' }}>End Reading</th>
+                  <th style={{ textAlign: 'right' }}>Consumption (L)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {commonReadings.map((row, idx) => {
+                  const consumption = Number(row.endReading) - Number(row.startReading);
+                  return (
+                    <tr key={row.commonAreaId}>
+                      <td style={{ fontWeight: 600 }}>{row.areaName}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={row.startReading}
+                          onChange={e => {
+                            const next = [...commonReadings];
+                            next[idx].startReading = e.target.value;
+                            setCommonReadings(next);
+                          }}
+                          style={{ width: 140, textAlign: 'right' }}
+                          disabled={!isEditable}
+                        />
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        <input
+                          type="number"
+                          step="0.001"
+                          value={row.endReading}
+                          onChange={e => {
+                            const next = [...commonReadings];
+                            next[idx].endReading = e.target.value;
+                            setCommonReadings(next);
+                          }}
+                          style={{ width: 140, textAlign: 'right' }}
+                          disabled={!isEditable}
+                        />
+                      </td>
+                      <td style={{ textAlign: 'right', color: '#666' }}>{Number.isFinite(consumption) ? (consumption * 1000).toLocaleString() : '-'}</td>
+                    </tr>
+                  );
+                })}
+                {commonReadings.length === 0 && (
+                  <tr><td colSpan={4} className="empty-state">No common areas are configured.</td></tr>
+                )}
+              </tbody>
+            </table>
+          )}
+        </div>
+      )}
+
+      {activeCaptureTab === 'costs' && selectedRecord && (
+        <div className="grid-2">
+          <div className="card">
+            <div className="card-header">
+              <h3>Cost Items</h3>
+              <button className="btn btn-primary" onClick={handleSaveCostsAndSources} disabled={saving || !isEditable || captureDetailsLoading}>
+                {saving ? 'Saving...' : 'Save Costs & Sources'}
+              </button>
+            </div>
+            <table>
+              <thead><tr><th>Item</th><th style={{ textAlign: 'right' }}>Amount (₹)</th><th style={{ width: 90 }}>Actions</th></tr></thead>
+              <tbody>
+                {costItems.map((ci, idx) => (
+                  <tr key={idx}>
+                    <td>
+                      <input
+                        type="text"
+                        value={ci.itemName}
+                        onChange={e => {
+                          const next = [...costItems];
+                          next[idx].itemName = e.target.value;
+                          setCostItems(next);
+                        }}
+                        style={{ width: '100%' }}
+                        disabled={!isEditable}
+                      />
+                    </td>
+                    <td style={{ textAlign: 'right' }}>
+                      <input
+                        type="number"
+                        step="1"
+                        value={ci.amount}
+                        onChange={e => {
+                          const next = [...costItems];
+                          next[idx].amount = e.target.value;
+                          setCostItems(next);
+                        }}
+                        style={{ width: 120, textAlign: 'right' }}
+                        disabled={!isEditable}
+                      />
+                    </td>
+                    <td><button className="btn btn-sm btn-secondary" onClick={() => setCostItems(costItems.filter((_, i) => i !== idx))} disabled={!isEditable}>Remove</button></td>
+                  </tr>
+                ))}
+                <tr>
+                  <td colSpan={3}>
+                    <button className="btn btn-sm" onClick={() => setCostItems([...costItems, { itemName: '', amount: 0 }])} disabled={!isEditable}>+ Add Item</button>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="card">
+            <h3 style={{ marginBottom: 15 }}>Water Source Readings</h3>
+            {captureDetailsLoading ? (
+              <div className="empty-state">Loading water sources...</div>
+            ) : (
+              <table>
+                <thead>
+                  <tr>
+                    <th>Source</th>
+                    <th style={{ textAlign: 'right' }}>Start</th>
+                    <th style={{ textAlign: 'right' }}>End/Count</th>
+                    <th style={{ textAlign: 'right' }}>Cost/Unit (₹)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {sourceReadings.map((source, idx) => (
+                    <tr key={source.waterSourceId}>
+                      <td style={{ fontWeight: 600 }}>{source.sourceName}</td>
+                      <td style={{ textAlign: 'right' }}>
+                        {source.sourceType === 'borewell' ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={source.startReading}
+                            onChange={e => {
+                              const next = [...sourceReadings];
+                              next[idx].startReading = e.target.value;
+                              setSourceReadings(next);
+                            }}
+                            style={{ width: 100, textAlign: 'right' }}
+                            disabled={!isEditable}
+                          />
+                        ) : '-'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {source.sourceType === 'borewell' ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={source.endReading}
+                            onChange={e => {
+                              const next = [...sourceReadings];
+                              next[idx].endReading = e.target.value;
+                              setSourceReadings(next);
+                            }}
+                            style={{ width: 100, textAlign: 'right' }}
+                            disabled={!isEditable}
+                          />
+                        ) : (
+                          <input
+                            type="number"
+                            step="1"
+                            value={source.unitCount}
+                            onChange={e => {
+                              const next = [...sourceReadings];
+                              next[idx].unitCount = e.target.value;
+                              setSourceReadings(next);
+                            }}
+                            style={{ width: 90, textAlign: 'right' }}
+                            disabled={!isEditable}
+                          />
+                        )}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {source.sourceType === 'tanker' ? (
+                          <input
+                            type="number"
+                            step="1"
+                            value={source.costPerUnit}
+                            onChange={e => {
+                              const next = [...sourceReadings];
+                              next[idx].costPerUnit = e.target.value;
+                              setSourceReadings(next);
+                            }}
+                            style={{ width: 100, textAlign: 'right' }}
+                            disabled={!isEditable}
+                          />
+                        ) : '-'}
+                      </td>
+                    </tr>
+                  ))}
+                  {sourceReadings.length === 0 && (
+                    <tr><td colSpan={4} className="empty-state">No water sources are configured.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            )}
+          </div>
         </div>
       )}
 
