@@ -63,11 +63,10 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       }
     });
 
-    // Rows 7-8: tankers — col B = capacity (12000), col C = unit count (matching Overview: Capacity | Count)
-    // Importer reads: if B >= 12000 then count = C, else count = B — so this is still importable
-    const TANKER_CAPACITY = 12000;
+    // Rows 7-8: tankers — col B = the capacity used for this month, col C = count.
     const tankerResult = await db.query(`
-      SELECT ws.name, wsr.unit_count, wsr.consumption_litres, wsr.total_cost
+      SELECT ws.name, COALESCE(wsr.capacity_litres, ws.capacity_litres) AS capacity_litres,
+        wsr.unit_count, wsr.consumption_litres, wsr.total_cost
       FROM water_sources ws
       LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
       WHERE ws.source_type = 'tanker'
@@ -78,7 +77,7 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
       if (tankerRowsWritten < 2) {
         summarySheet.addRow([
           t.name,
-          TANKER_CAPACITY,                                                          // Capacity in col B
+          t.capacity_litres !== null ? parseFloat(t.capacity_litres) : '',          // Capacity in col B
           t.unit_count !== null ? parseFloat(t.unit_count) : '',                   // Count in col C
           t.consumption_litres !== null ? parseFloat(t.consumption_litres) : '',   // Consumption in col D
         ]);

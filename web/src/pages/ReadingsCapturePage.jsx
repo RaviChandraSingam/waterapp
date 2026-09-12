@@ -90,7 +90,9 @@ export default function ReadingsCapturePage() {
             waterSourceId: source.id,
             sourceName: source.name,
             sourceType: source.source_type,
-            capacityLitres: source.capacity_litres,
+            // Blank means use the previous month's capacity, then the source default.
+            capacityLitres: existing?.capacity_litres ?? '',
+            defaultCapacityLitres: source.capacity_litres,
             startReading: existing?.start_reading ?? '',
             endReading: existing?.end_reading ?? '',
             unitCount: existing?.unit_count ?? '',
@@ -285,7 +287,8 @@ export default function ReadingsCapturePage() {
           waterSourceId: source.id,
           sourceName: source.name,
           sourceType: source.source_type,
-          capacityLitres: source.capacity_litres,
+          capacityLitres: existing?.capacity_litres ?? '',
+          defaultCapacityLitres: source.capacity_litres,
           startReading: existing?.start_reading ?? '',
           endReading: existing?.end_reading ?? '',
           unitCount: existing?.unit_count ?? '',
@@ -696,6 +699,7 @@ export default function ReadingsCapturePage() {
                     <th>Source</th>
                     <th style={{ textAlign: 'right' }}>Start</th>
                     <th style={{ textAlign: 'right' }}>End/Count</th>
+                    <th style={{ textAlign: 'right' }}>Capacity (L)</th>
                     <th style={{ textAlign: 'right' }}>Cost/Unit (₹)</th>
                   </tr>
                 </thead>
@@ -752,6 +756,24 @@ export default function ReadingsCapturePage() {
                         {source.sourceType === 'tanker' ? (
                           <input
                             type="number"
+                            min="1"
+                            step="1"
+                            value={source.capacityLitres}
+                            placeholder={`Default: ${source.defaultCapacityLitres || 12000}`}
+                            onChange={e => {
+                              const next = [...sourceReadings];
+                              next[idx].capacityLitres = e.target.value;
+                              setSourceReadings(next);
+                            }}
+                            style={{ width: 100, textAlign: 'right' }}
+                            disabled={!isEditable}
+                          />
+                        ) : '-'}
+                      </td>
+                      <td style={{ textAlign: 'right' }}>
+                        {source.sourceType === 'tanker' ? (
+                          <input
+                            type="number"
                             step="1"
                             value={source.costPerUnit}
                             onChange={e => {
@@ -767,7 +789,7 @@ export default function ReadingsCapturePage() {
                     </tr>
                   ))}
                   {sourceReadings.length === 0 && (
-                    <tr><td colSpan={4} className="empty-state">No water sources are configured.</td></tr>
+                    <tr><td colSpan={5} className="empty-state">No water sources are configured.</td></tr>
                   )}
                 </tbody>
               </table>

@@ -75,7 +75,9 @@ router.get('/:id', authenticate, async (req, res) => {
 
     // Fetch water source readings
     const sourceReadings = await db.query(`
-      SELECT wsr.*, ws.name as source_name, ws.source_type, ws.capacity_litres,
+      SELECT wsr.*, ws.name as source_name, ws.source_type,
+        COALESCE(wsr.capacity_litres, ws.capacity_litres) AS capacity_litres,
+        ws.capacity_litres AS default_capacity_litres,
         ws.cost_per_unit as default_cost_per_unit
       FROM water_source_readings wsr
       JOIN water_sources ws ON wsr.water_source_id = ws.id
@@ -257,6 +259,7 @@ router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant'
       let consumptionLitres = 0;
       let totalCost = 0;
       let costPerUnit = null;
+      let capacityLitres = null;
 
       if (ws.source_type === 'borewell') {
         consumptionLitres = ((reading.endReading || 0) - (reading.startReading || 0)) * 1000;
@@ -276,21 +279,43 @@ router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant'
           costPerUnit = parseFloat(ws.cost_per_unit || 0);
         }
 
-        consumptionLitres = (reading.unitCount || 0) * (ws.capacity_litres || 12000);
+        // Determine capacity: explicit value > previous month > source default.
+        // The chosen value is stored on the monthly reading so later changes do
+        // not alter historical months.
+        if (reading.capacityLitres !== undefined && reading.capacityLitres !== null && reading.capacityLitres !== '') {
+          capacityLitres = parseFloat(reading.capacityLitres);
+          if (!Number.isFinite(capacityLitres) || capacityLitres <= 0) {
+            return res.status(400).json({ error: 'Tanker capacity must be a positive number' });
+          }
+        } else if (prevRec.rows.length > 0) {
+          const prevCapacity = await db.query(
+            'SELECT capacity_litres FROM water_source_readings WHERE monthly_record_id = $1 AND water_source_id = $2',
+            [prevRec.rows[0].id, reading.waterSourceId]
+          );
+          capacityLitres = prevCapacity.rows.length > 0 && prevCapacity.rows[0].capacity_litres
+            ? parseFloat(prevCapacity.rows[0].capacity_litres)
+            : parseFloat(ws.capacity_litres || 12000);
+        } else {
+          capacityLitres = parseFloat(ws.capacity_litres || 12000);
+        }
+
+        consumptionLitres = (reading.unitCount || 0) * capacityLitres;
         totalCost = (reading.unitCount || 0) * costPerUnit;
       }
 
       await db.query(`
-        INSERT INTO water_source_readings (monthly_record_id, water_source_id, start_reading, end_reading, unit_count, cost_per_unit, consumption_litres, total_cost)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        INSERT INTO water_source_readings (monthly_record_id, water_source_id, start_reading, end_reading, unit_count, cost_per_unit, capacity_litres, consumption_litres, total_cost)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (monthly_record_id, water_source_id)
-        DO UPDATE SET start_reading = $3, end_reading = $4, unit_count = $5, cost_per_unit = $6, consumption_litres = $7, total_cost = $8
+        DO UPDATE SET start_reading = $3, end_reading = $4, unit_count = $5, cost_per_unit = $6, capacity_litres = $7, consumption_litres = $8, total_cost = $9
       `, [req.params.id, reading.waterSourceId, reading.startReading || null, reading.endReading || null,
-          reading.unitCount || null, costPerUnit, consumptionLitres, totalCost]);
+          reading.unitCount || null, costPerUnit, capacityLitres, consumptionLitres, totalCost]);
     }
 
     const result = await db.query(`
-      SELECT wsr.*, ws.name as source_name, ws.source_type, ws.capacity_litres,
+      SELECT wsr.*, ws.name as source_name, ws.source_type,
+        COALESCE(wsr.capacity_litres, ws.capacity_litres) AS capacity_litres,
+        ws.capacity_litres AS default_capacity_litres,
         ws.cost_per_unit as default_cost_per_unit
       FROM water_source_readings wsr
       JOIN water_sources ws ON wsr.water_source_id = ws.id

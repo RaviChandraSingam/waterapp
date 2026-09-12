@@ -121,6 +121,7 @@ CREATE TABLE water_source_readings (
     end_reading NUMERIC,                -- for borewells
     unit_count NUMERIC,                 -- for tankers (number of tankers)
     cost_per_unit NUMERIC,              -- per-month tanker cost (defaults from previous month or water_sources)
+    capacity_litres NUMERIC,            -- per-month tanker capacity (defaults from previous month or water_sources)
     consumption_litres NUMERIC,         -- calculated
     total_cost NUMERIC(12, 2),          -- calculated: unit_count * cost_per_unit
     created_at TIMESTAMP DEFAULT NOW(),

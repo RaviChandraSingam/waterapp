@@ -112,28 +112,31 @@ async function importFile(fileInfo) {
   }
 
   // Import tanker data
-  const tankerCount = summarySheet.getCell('B7').value;
-  const kaveriCount = summarySheet.getCell('B8').value;
+  const tankerCapacity = summarySheet.getCell('C7').value;
+  const kaveriCapacity = summarySheet.getCell('C8').value;
+  // New exports keep capacity in B and count in C; legacy sheets use B as count.
+  const tankerCount = typeof tankerCapacity === 'number' ? tankerCapacity : summarySheet.getCell('B7').value;
+  const kaveriCount = typeof kaveriCapacity === 'number' ? kaveriCapacity : summarySheet.getCell('B8').value;
 
   if (tankerCount !== null) {
-    const sourceResult = await pool.query("SELECT id FROM water_sources WHERE name = 'Regular Tanker'");
+    const sourceResult = await pool.query("SELECT id, capacity_litres, cost_per_unit FROM water_sources WHERE name = 'Regular Tanker'");
     if (sourceResult.rows.length > 0) {
       await pool.query(`
-        INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, consumption_litres, total_cost)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, consumption_litres = $4, total_cost = $5
-      `, [recordId, sourceResult.rows[0].id, tankerCount, tankerCount * 12000, tankerCount * 2000]);
+        INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, capacity_litres, consumption_litres, total_cost)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, capacity_litres = $5, consumption_litres = $6, total_cost = $7
+      `, [recordId, sourceResult.rows[0].id, tankerCount, sourceResult.rows[0].cost_per_unit, typeof tankerCapacity === 'number' ? summarySheet.getCell('B7').value : sourceResult.rows[0].capacity_litres, tankerCount * (typeof tankerCapacity === 'number' ? summarySheet.getCell('B7').value : sourceResult.rows[0].capacity_litres), tankerCount * sourceResult.rows[0].cost_per_unit]);
     }
   }
 
   if (kaveriCount !== null) {
-    const sourceResult = await pool.query("SELECT id FROM water_sources WHERE name = 'Kaveri Tanker'");
+    const sourceResult = await pool.query("SELECT id, capacity_litres, cost_per_unit FROM water_sources WHERE name = 'Kaveri Tanker'");
     if (sourceResult.rows.length > 0) {
       await pool.query(`
-        INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, consumption_litres, total_cost)
-        VALUES ($1, $2, $3, $4, $5)
-        ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, consumption_litres = $4, total_cost = $5
-      `, [recordId, sourceResult.rows[0].id, kaveriCount, kaveriCount * 12000, kaveriCount * 1400]);
+        INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, capacity_litres, consumption_litres, total_cost)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, capacity_litres = $5, consumption_litres = $6, total_cost = $7
+      `, [recordId, sourceResult.rows[0].id, kaveriCount, sourceResult.rows[0].cost_per_unit, typeof kaveriCapacity === 'number' ? summarySheet.getCell('B8').value : sourceResult.rows[0].capacity_litres, kaveriCount * (typeof kaveriCapacity === 'number' ? summarySheet.getCell('B8').value : sourceResult.rows[0].capacity_litres), kaveriCount * sourceResult.rows[0].cost_per_unit]);
     }
   }
 

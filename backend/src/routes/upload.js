@@ -65,7 +65,6 @@ router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', '
     const workbook = new ExcelJS.Workbook();
     await workbook.xlsx.load(req.file.buffer);
 
-    const TANKER_CAPACITY = 12000;
     const preview = { periods: {}, waterSources: [], costItems: [], commonAreas: [], blockReadings: {}, errors: [], stats: { readingsFound: 0, blocksFound: 0 } };
 
     const summarySheet = workbook.getWorksheet('summary');
@@ -100,29 +99,35 @@ router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', '
         return null;
       };
 
-      let regularCount = null, kaveriCount = null;
+      const tankerDefaults = await db.query("SELECT name, capacity_litres, cost_per_unit FROM water_sources WHERE source_type = 'tanker'");
+      const defaultFor = (name, field, fallback) => parseFloat(tankerDefaults.rows.find(s => s.name === name)?.[field] || fallback);
+      let regularCount = null, kaveriCount = null, regularCapacity = null, kaveriCapacity = null;
       for (let r = 7; r <= 8; r++) {
         const label = summarySheet.getCell(`A${r}`).value;
         const bVal = summarySheet.getCell(`B${r}`).value;
         const cVal = summarySheet.getCell(`C${r}`).value;
-        const count = (typeof bVal === 'number' && bVal >= TANKER_CAPACITY && typeof cVal === 'number') ? cVal : bVal;
+        // Current exports put capacity in B and count in C. Older sheets put count in B.
+        const hasCapacityColumn = typeof bVal === 'number' && typeof cVal === 'number';
+        const count = hasCapacityColumn ? cVal : bVal;
         if (!label || typeof label !== 'string') continue;
         if (/kaveri/i.test(label)) {
           kaveriCount = count;
+          kaveriCapacity = hasCapacityColumn ? bVal : defaultFor('Kaveri Tanker', 'capacity_litres', 12000);
         } else if (/tanker|regular/i.test(label)) {
           regularCount = count;
+          regularCapacity = hasCapacityColumn ? bVal : defaultFor('Regular Tanker', 'capacity_litres', 12000);
         }
       }
 
       if (regularCount !== null && typeof regularCount === 'number') {
         const sheetTotalCost = getTankerCostPreview('water') ?? getTankerCostPreview('regular');
-        const totalCost = sheetTotalCost ?? (regularCount * 2000);
-        preview.waterSources.push({ name: 'Regular Tanker', type: 'tanker', unitCount: regularCount, costPerUnit: regularCount > 0 ? totalCost / regularCount : 2000, totalCost, consumptionLitres: regularCount * TANKER_CAPACITY });
+        const totalCost = sheetTotalCost ?? (regularCount * defaultFor('Regular Tanker', 'cost_per_unit', 2000));
+        preview.waterSources.push({ name: 'Regular Tanker', type: 'tanker', unitCount: regularCount, capacityLitres: regularCapacity, costPerUnit: regularCount > 0 ? totalCost / regularCount : defaultFor('Regular Tanker', 'cost_per_unit', 2000), totalCost, consumptionLitres: regularCount * regularCapacity });
       }
       if (kaveriCount !== null && typeof kaveriCount === 'number') {
         const sheetTotalCost = getTankerCostPreview('kaveri');
-        const totalCost = sheetTotalCost ?? (kaveriCount * 1400);
-        preview.waterSources.push({ name: 'Kaveri Tanker', type: 'tanker', unitCount: kaveriCount, costPerUnit: kaveriCount > 0 ? totalCost / kaveriCount : 1400, totalCost, consumptionLitres: kaveriCount * TANKER_CAPACITY });
+        const totalCost = sheetTotalCost ?? (kaveriCount * defaultFor('Kaveri Tanker', 'cost_per_unit', 1400));
+        preview.waterSources.push({ name: 'Kaveri Tanker', type: 'tanker', unitCount: kaveriCount, capacityLitres: kaveriCapacity, costPerUnit: kaveriCount > 0 ? totalCost / kaveriCount : defaultFor('Kaveri Tanker', 'cost_per_unit', 1400), totalCost, consumptionLitres: kaveriCount * kaveriCapacity });
       }
 
       // Dynamically scan all rows after the water sources section for cost items.
@@ -256,7 +261,6 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       }
 
       // Import tanker data
-      const TANKER_CAPACITY = 12000;
       const tankerCostByLabel = {};
       for (let r = 9; r <= summarySheet.rowCount; r++) {
         const lbl = summarySheet.getCell(`A${r}`).value;
@@ -273,46 +277,49 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
       };
 
       // Detect tanker counts by label (rows 7–8) — handles row-order changes and old/new Excel formats
-      let regularCount = null, kaveriCount = null;
+      let regularCount = null, kaveriCount = null, regularCapacity = null, kaveriCapacity = null;
       for (let r = 7; r <= 8; r++) {
         const label = summarySheet.getCell(`A${r}`).value;
         const bVal = summarySheet.getCell(`B${r}`).value;
         const cVal = summarySheet.getCell(`C${r}`).value;
-        const count = (typeof bVal === 'number' && bVal >= TANKER_CAPACITY && typeof cVal === 'number') ? cVal : bVal;
+        const hasCapacityColumn = typeof bVal === 'number' && typeof cVal === 'number';
+        const count = hasCapacityColumn ? cVal : bVal;
         if (!label || typeof label !== 'string') continue;
         if (/kaveri/i.test(label)) {
           kaveriCount = count;
+          kaveriCapacity = hasCapacityColumn ? bVal : null;
         } else if (/tanker|regular/i.test(label)) {
           regularCount = count;
+          regularCapacity = hasCapacityColumn ? bVal : null;
         }
       }
 
       if (regularCount !== null && typeof regularCount === 'number') {
-        const sourceResult = await client.query("SELECT id, cost_per_unit FROM water_sources WHERE name = 'Regular Tanker'");
+        const sourceResult = await client.query("SELECT id, cost_per_unit, capacity_litres FROM water_sources WHERE name = 'Regular Tanker'");
         if (sourceResult.rows.length > 0) {
           const sheetTotalCost = getTankerCost('water') ?? getTankerCost('regular');
           const totalCost = sheetTotalCost ?? (regularCount * parseFloat(sourceResult.rows[0].cost_per_unit || 2000));
           const costPerUnit = regularCount > 0 ? totalCost / regularCount : parseFloat(sourceResult.rows[0].cost_per_unit || 2000);
           await client.query(`
-            INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, consumption_litres, total_cost)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, consumption_litres = $5, total_cost = $6
-          `, [monthlyRecordId, sourceResult.rows[0].id, regularCount, costPerUnit, regularCount * TANKER_CAPACITY, totalCost]);
+            INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, capacity_litres, consumption_litres, total_cost)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, capacity_litres = $5, consumption_litres = $6, total_cost = $7
+          `, [monthlyRecordId, sourceResult.rows[0].id, regularCount, costPerUnit, regularCapacity || parseFloat(sourceResult.rows[0].capacity_litres || 12000), regularCount * (regularCapacity || parseFloat(sourceResult.rows[0].capacity_litres || 12000)), totalCost]);
           stats.waterSources++;
         }
       }
 
       if (kaveriCount !== null && typeof kaveriCount === 'number') {
-        const sourceResult = await client.query("SELECT id, cost_per_unit FROM water_sources WHERE name = 'Kaveri Tanker'");
+        const sourceResult = await client.query("SELECT id, cost_per_unit, capacity_litres FROM water_sources WHERE name = 'Kaveri Tanker'");
         if (sourceResult.rows.length > 0) {
           const sheetTotalCost = getTankerCost('kaveri');
           const totalCost = sheetTotalCost ?? (kaveriCount * parseFloat(sourceResult.rows[0].cost_per_unit || 1400));
           const costPerUnit = kaveriCount > 0 ? totalCost / kaveriCount : parseFloat(sourceResult.rows[0].cost_per_unit || 1400);
           await client.query(`
-            INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, consumption_litres, total_cost)
-            VALUES ($1, $2, $3, $4, $5, $6)
-            ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, consumption_litres = $5, total_cost = $6
-          `, [monthlyRecordId, sourceResult.rows[0].id, kaveriCount, costPerUnit, kaveriCount * TANKER_CAPACITY, totalCost]);
+            INSERT INTO water_source_readings (monthly_record_id, water_source_id, unit_count, cost_per_unit, capacity_litres, consumption_litres, total_cost)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            ON CONFLICT (monthly_record_id, water_source_id) DO UPDATE SET unit_count = $3, cost_per_unit = $4, capacity_litres = $5, consumption_litres = $6, total_cost = $7
+          `, [monthlyRecordId, sourceResult.rows[0].id, kaveriCount, costPerUnit, kaveriCapacity || parseFloat(sourceResult.rows[0].capacity_litres || 12000), kaveriCount * (kaveriCapacity || parseFloat(sourceResult.rows[0].capacity_litres || 12000)), totalCost]);
           stats.waterSources++;
         }
       }

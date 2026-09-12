@@ -65,6 +65,12 @@ async function initUsers() {
 
 async function migrateDB() {
   try {
+    // Keep the capacity used for each tanker reading on the monthly record.
+    // This is safe for both fresh and existing local databases.
+    await db.query(`
+      ALTER TABLE water_source_readings
+      ADD COLUMN IF NOT EXISTS capacity_litres NUMERIC;
+    `);
     await db.query(`
       ALTER TABLE users ADD COLUMN IF NOT EXISTS can_manage_users BOOLEAN DEFAULT false;
       ALTER TABLE users ADD COLUMN IF NOT EXISTS is_superadmin BOOLEAN DEFAULT false;

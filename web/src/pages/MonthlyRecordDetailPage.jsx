@@ -29,10 +29,12 @@ export default function MonthlyRecordDetailPage() {
   const [uploadPreview, setUploadPreview] = useState(null);
   const [editingDates, setEditingDates] = useState(false);
   const [editDates, setEditDates] = useState({});
+  const [loadError, setLoadError] = useState('');
 
   useEffect(() => { loadData(); }, [id]);
 
   async function loadData() {
+    setLoadError('');
     try {
       const [rec, bl, rd, cr, bill, areas] = await Promise.all([
         api.getMonthlyRecord(id),
@@ -51,6 +53,7 @@ export default function MonthlyRecordDetailPage() {
       if (bl.length > 0 && !activeBlock) setActiveBlock(bl[0].id);
     } catch (err) {
       console.error(err);
+      setLoadError(err.message || 'Unable to load this record');
     } finally {
       setLoading(false);
     }
@@ -107,10 +110,12 @@ export default function MonthlyRecordDetailPage() {
         waterSourceId: ws.id,
         sourceName: ws.name,
         sourceType: ws.source_type,
+        defaultCapacityLitres: ws.capacity_litres,
         startReading: existing?.start_reading || '',
         endReading: existing?.end_reading || '',
         unitCount: existing?.unit_count || '',
         costPerUnit: existing?.cost_per_unit ?? ws.cost_per_unit ?? '',
+        capacityLitres: existing?.capacity_litres ?? '',
       };
     });
     setEditSourceReadings(merged);
@@ -224,7 +229,7 @@ export default function MonthlyRecordDetailPage() {
   }
 
   if (loading) return <div className="card">Loading...</div>;
-  if (!record) return <div className="card">Record not found</div>;
+  if (!record) return <div className="card">{loadError ? `Unable to load record: ${loadError}` : 'Record not found'}</div>;
 
   const blockReadings = readings.filter(r => activeBlock && r.block_name === blocks.find(b => b.id === activeBlock)?.name);
   const blockBilling = billing.filter(b => activeBlock && b.block_name === blocks.find(bl => bl.id === activeBlock)?.name);
@@ -767,6 +772,7 @@ export default function MonthlyRecordDetailPage() {
                     <th>Source</th>
                     <th style={{ textAlign: 'right' }}>Start</th>
                     <th style={{ textAlign: 'right' }}>End/Count</th>
+                    <th style={{ textAlign: 'right' }}>Capacity (L)</th>
                     <th style={{ textAlign: 'right' }}>Cost/Unit (₹)</th>
                     <th style={{ textAlign: 'right' }}>Total Cost (₹)</th>
                     <th style={{ textAlign: 'right' }}>Consumption (L)</th>
@@ -803,6 +809,15 @@ export default function MonthlyRecordDetailPage() {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           {wsr.sourceType === 'tanker' ? (
+                            <input type="number" min="1" step="1" value={wsr.capacityLitres} placeholder={`Default: ${wsr.defaultCapacityLitres || 12000}`} onChange={e => {
+                              const items = [...editSourceReadings];
+                              items[idx].capacityLitres = e.target.value;
+                              setEditSourceReadings(items);
+                            }} style={{ width: 100, textAlign: 'right' }} />
+                          ) : '-'}
+                        </td>
+                        <td style={{ textAlign: 'right' }}>
+                          {wsr.sourceType === 'tanker' ? (
                             <input type="number" step="1" value={wsr.costPerUnit} onChange={e => {
                               const items = [...editSourceReadings];
                               items[idx].costPerUnit = e.target.value;
@@ -823,6 +838,7 @@ export default function MonthlyRecordDetailPage() {
                           <td>{wsr.source_name}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.start_reading || '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.end_reading || wsr.unit_count || '-'}</td>
+                          <td style={{ textAlign: 'right' }}>{wsr.source_type === 'tanker' ? Number(wsr.capacity_litres || 12000).toLocaleString() : '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.source_type === 'tanker' ? `₹${Number(wsr.cost_per_unit || 0).toLocaleString()}` : '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.total_cost ? `₹${Number(wsr.total_cost).toLocaleString()}` : '-'}</td>
                           <td style={{ textAlign: 'right' }}>{Number(wsr.consumption_litres).toLocaleString()}</td>
