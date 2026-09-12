@@ -9,6 +9,7 @@ export default function CaptureReadingsScreen({ route, navigation }) {
   const { record, block } = route.params;
   const [flats, setFlats] = useState([]);
   const [existingReadings, setExistingReadings] = useState([]);
+  const [previousMonthReadings, setPreviousMonthReadings] = useState([]);
   const [values, setValues] = useState({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -22,12 +23,14 @@ export default function CaptureReadingsScreen({ route, navigation }) {
 
   const loadData = async () => {
     try {
-      const [flatData, readingData] = await Promise.all([
+      const [flatData, readingData, previousMonthData] = await Promise.all([
         api.getFlats(block.id),
         api.getReadings(record.id, block.id),
+        api.getPreviousReadings(record.id, block.id),
       ]);
       setFlats(flatData);
       setExistingReadings(readingData);
+      setPreviousMonthReadings(previousMonthData);
       setLoading(false);
     } catch (err) {
       Alert.alert('Error', 'Could not load data');
@@ -47,7 +50,10 @@ export default function CaptureReadingsScreen({ route, navigation }) {
       const prev = flatReadings.find(r => r.reading_sequence === sequence - 1);
       if (prev) return Number(prev.reading_value);
     }
-    return flatReadings.length > 0 ? Number(flatReadings[flatReadings.length - 1].reading_value) : null;
+    if (flatReadings.length > 0) return Number(flatReadings[flatReadings.length - 1].reading_value);
+
+    const previousMonthReading = previousMonthReadings.find(r => r.flat_id === flatId);
+    return previousMonthReading ? Number(previousMonthReading.reading_value) : null;
   };
 
   const getWarning = (flatId, value) => {
@@ -56,7 +62,7 @@ export default function CaptureReadingsScreen({ route, navigation }) {
     const prev = getPreviousReading(flatId);
     if (prev === null) return null;
     if (numVal < prev) return { type: 'below', msg: `Below previous (${prev})` };
-    if (prev > 0 && numVal > prev * 1.5) return { type: 'high', msg: `50%+ increase from ${prev}` };
+    if (prev > 0 && numVal > prev * 1.5) return { type: 'high', msg: `More than 50% increase from ${prev}` };
     return null;
   };
 

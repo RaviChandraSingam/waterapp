@@ -67,6 +67,7 @@ export const api = {
 
   // Readings
   getReadings: (recordId, blockId) => request(`/api/readings/${recordId}/block/${blockId}`),
+  getPreviousReadings: (recordId, blockId) => request(`/api/readings/${recordId}/block/${blockId}/previous`),
 
   saveReadings: (readings) => request('/api/readings', {
     method: 'POST',

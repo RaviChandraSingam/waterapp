@@ -95,40 +95,45 @@ async function detectWarnings(monthlyRecordId, flatId, readingValue, readingSequ
     ORDER BY reading_sequence DESC LIMIT 1
   `, [monthlyRecordId, flatId, readingSequence]);
 
+  let previousValue = null;
+  let previousLabel = 'previous reading';
+
   if (prevReading.rows.length > 0) {
-    const prevValue = parseFloat(prevReading.rows[0].reading_value);
-    const newValue = parseFloat(readingValue);
-
-    if (newValue < prevValue) {
-      hasWarning = true;
-      warningMessage = `Reading ${newValue} is BELOW previous reading ${prevValue}. Possible meter reset or error.`;
-    } else {
-      const increase = prevValue > 0 ? ((newValue - prevValue) / prevValue) * 100 : 0;
-      const config = await db.query("SELECT config_value FROM billing_config WHERE config_key = 'reading_warning_increase_pct'");
-      const threshold = config.rows.length > 0 ? parseFloat(config.rows[0].config_value) : 50;
-
-      if (increase > threshold) {
-        hasWarning = true;
-        warningMessage = `Reading increased by ${increase.toFixed(1)}% (${prevValue} → ${newValue}). Exceeds ${threshold}% threshold.`;
-      }
-    }
-  }
-
-  if (!prevReading.rows.length) {
+    previousValue = parseFloat(prevReading.rows[0].reading_value);
+  } else {
+    // Compare the first reading entered this month with the *latest prior
+    // month*, never a record created for a future month.
     const prevMonthReading = await db.query(`
       SELECT mr2.reading_value FROM meter_readings mr2
       JOIN monthly_records mo ON mr2.monthly_record_id = mo.id
-      WHERE mr2.flat_id = $1 AND mr2.monthly_record_id != $2
+      JOIN monthly_records current_month ON current_month.id = $2
+      WHERE mr2.flat_id = $1
+        AND (mo.year < current_month.year
+          OR (mo.year = current_month.year AND mo.month < current_month.month))
       ORDER BY mo.year DESC, mo.month DESC, mr2.reading_sequence DESC
       LIMIT 1
     `, [flatId, monthlyRecordId]);
 
     if (prevMonthReading.rows.length > 0) {
-      const prevValue = parseFloat(prevMonthReading.rows[0].reading_value);
-      const newValue = parseFloat(readingValue);
-      if (newValue < prevValue) {
+      previousValue = parseFloat(prevMonthReading.rows[0].reading_value);
+      previousLabel = "last month's reading";
+    }
+  }
+
+  if (previousValue !== null) {
+    const newValue = parseFloat(readingValue);
+
+    if (newValue < previousValue) {
+      hasWarning = true;
+      warningMessage = `Reading ${newValue} is BELOW ${previousLabel} ${previousValue}. Possible meter reset or error.`;
+    } else {
+      const increase = previousValue > 0 ? ((newValue - previousValue) / previousValue) * 100 : 0;
+      const config = await db.query("SELECT config_value FROM billing_config WHERE config_key = 'reading_warning_increase_pct'");
+      const threshold = config.rows.length > 0 ? parseFloat(config.rows[0].config_value) : 50;
+
+      if (increase > threshold) {
         hasWarning = true;
-        warningMessage = `Reading ${newValue} is BELOW last month's reading ${prevValue}. Possible meter reset or error.`;
+        warningMessage = `Reading increased by ${increase.toFixed(1)}% (${previousValue} → ${newValue}) from ${previousLabel}. Exceeds ${threshold}% threshold.`;
       }
     }
   }
@@ -232,11 +237,17 @@ router.put('/:id', authenticate, authorize('accountant', 'watercommittee'), asyn
     }
 
     const old = readingRow.rows[0];
+    const { hasWarning, warningMessage } = await detectWarnings(
+      old.monthly_record_id,
+      old.flat_id,
+      readingValue,
+      old.reading_sequence
+    );
     const result = await db.query(`
       UPDATE meter_readings SET reading_value = $1, reading_date = COALESCE($2, reading_date), 
-        is_verified = false, updated_at = NOW()
-      WHERE id = $3 RETURNING *
-    `, [readingValue, readingDate || null, req.params.id]);
+        has_warning = $3, warning_message = $4, is_verified = false, updated_at = NOW()
+      WHERE id = $5 RETURNING *
+    `, [readingValue, readingDate || null, hasWarning, warningMessage, req.params.id]);
 
     // Audit log
     await db.query(
@@ -288,5 +299,8 @@ router.get('/audit/:monthlyRecordId', authenticate, authorize('accountant', 'wat
     res.status(500).json({ error: 'Internal server error' });
   }
 });
+
+// Exposed for focused regression tests; HTTP consumers use the router above.
+router.detectWarnings = detectWarnings;
 
 module.exports = router;
