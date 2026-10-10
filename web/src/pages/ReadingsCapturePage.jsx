@@ -708,7 +708,7 @@ export default function ReadingsCapturePage() {
                     <tr key={source.waterSourceId}>
                       <td style={{ fontWeight: 600 }}>{source.sourceName}</td>
                       <td style={{ textAlign: 'right' }}>
-                        {source.sourceType === 'borewell' ? (
+                        {source.sourceType !== 'tanker' ? (
                           <input
                             type="number"
                             step="1"
@@ -724,7 +724,7 @@ export default function ReadingsCapturePage() {
                         ) : '-'}
                       </td>
                       <td style={{ textAlign: 'right' }}>
-                        {source.sourceType === 'borewell' ? (
+                        {source.sourceType !== 'tanker' ? (
                           <input
                             type="number"
                             step="1"

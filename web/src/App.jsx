@@ -148,7 +148,7 @@ function Sidebar() {
             </>
           )}
 
-          {user.role === 'watercommittee' && (
+          {(user.isSuperadmin || user.role === 'watercommittee') && (
             <>
               <div className="section-title">Admin</div>
               <Link to="/config" onClick={close} className={isActive('/config') ? 'active' : ''}>Configuration</Link>

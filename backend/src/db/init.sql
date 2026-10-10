@@ -64,7 +64,7 @@ CREATE TABLE common_areas (
 CREATE TABLE water_sources (
     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
     name VARCHAR(100) NOT NULL,         -- 'A block Borewell', '12000 ltrs per Tanker'
-    source_type VARCHAR(20) NOT NULL,   -- 'borewell' or 'tanker'
+    source_type VARCHAR(20) NOT NULL,   -- 'borewell', 'tanker', 'rainwater', or 'metered'
     capacity_litres NUMERIC,            -- e.g., 12000 for tankers
     cost_per_unit NUMERIC,              -- e.g., 2000 per tanker, 1400 per Kaveri tanker
     is_active BOOLEAN DEFAULT true

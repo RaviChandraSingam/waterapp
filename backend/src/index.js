@@ -65,6 +65,7 @@ async function initUsers() {
 
 async function migrateDB() {
   try {
+    await db.query(require('fs').readFileSync(require('path').join(__dirname, 'db/migrations/20261010_add_rain_water.sql'), 'utf8'));
     // Keep the capacity used for each tanker reading on the monthly record.
     // This is safe for both fresh and existing local databases.
     await db.query(`

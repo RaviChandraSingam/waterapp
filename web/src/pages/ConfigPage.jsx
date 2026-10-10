@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react';
 import { api } from '../services/api';
+import { useAuth } from '../App';
 
 export default function ConfigPage() {
+  const { user } = useAuth();
+  const canManageSources = user.isSuperadmin || user.role === 'watercommittee';
+  const [newSource, setNewSource] = useState(null);
+  const [sourceError, setSourceError] = useState('');
+  const [savingSource, setSavingSource] = useState(false);
   const [billingConfig, setBillingConfig] = useState([]);
   const [waterSources, setWaterSources] = useState([]);
   const [commonAreas, setCommonAreas] = useState([]);
@@ -19,6 +25,23 @@ export default function ConfigPage() {
     setWaterSources(sources);
     setCommonAreas(areas);
     setLoading(false);
+  }
+
+  async function handleCreateSource(event) {
+    event.preventDefault();
+    setSavingSource(true);
+    setSourceError('');
+    try {
+      const source = await api.createWaterSource(newSource);
+      setWaterSources(current => [...current, source].sort((a, b) => a.name.localeCompare(b.name)));
+      setNewSource(null);
+      setSaveMsg('Water source added!');
+      setTimeout(() => setSaveMsg(''), 2000);
+    } catch (err) {
+      setSourceError(err.message);
+    } finally {
+      setSavingSource(false);
+    }
   }
 
   async function handleSave(item) {
@@ -138,7 +161,40 @@ export default function ConfigPage() {
       </div>
 
       <div className="card">
-        <h2>Water Sources</h2>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 15 }}>
+          <h2>Water Sources</h2>
+          {canManageSources && <button className="btn btn-sm btn-primary" disabled={!!newSource} onClick={() => {
+            setSourceError('');
+            setNewSource({ name: '', sourceType: 'rainwater', capacityLitres: '', costPerUnit: '' });
+          }}>+ Add Water Source</button>}
+        </div>
+        {canManageSources && newSource && (
+          <form onSubmit={handleCreateSource} style={{ marginBottom: 20 }}>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16, marginBottom: 12 }}>
+              <label>Name<br /><input required maxLength={100} value={newSource.name} autoFocus disabled={savingSource}
+                onChange={e => setNewSource({ ...newSource, name: e.target.value })} /></label>
+              <label>Type<br /><select value={newSource.sourceType} disabled={savingSource}
+                onChange={e => setNewSource({ ...newSource, sourceType: e.target.value })}>
+                <option value="rainwater">Rain Water (metered)</option>
+                <option value="borewell">Borewell (metered)</option>
+                <option value="tanker">Tanker</option>
+                <option value="metered">Other metered source</option>
+              </select></label>
+              {newSource.sourceType === 'tanker' && <>
+                <label>Capacity (litres)<br /><input type="number" required min="0.01" step="any" value={newSource.capacityLitres} disabled={savingSource}
+                  onChange={e => setNewSource({ ...newSource, capacityLitres: e.target.value })} /></label>
+                <label>Cost per tanker (₹)<br /><input type="number" required min="0" step="any" value={newSource.costPerUnit} disabled={savingSource}
+                  onChange={e => setNewSource({ ...newSource, costPerUnit: e.target.value })} /></label>
+              </>}
+            </div>
+            <p style={{ color: '#666', marginBottom: 12 }}>{newSource.sourceType === 'tanker'
+              ? 'Enter tanker counts each month. Capacity and cost are defaults that can be changed per month.'
+              : 'Enter start and end meter readings in kilolitres (kL) each month. Consumption is converted to litres.'}</p>
+            {sourceError && <p role="alert" style={{ color: '#b91c1c', marginBottom: 12 }}>{sourceError}</p>}
+            <button className="btn btn-sm btn-primary" type="submit" disabled={savingSource}>{savingSource ? 'Adding…' : 'Add Source'}</button>{' '}
+            <button className="btn btn-sm btn-secondary" type="button" disabled={savingSource} onClick={() => setNewSource(null)}>Cancel</button>
+          </form>
+        )}
         <table>
           <thead>
             <tr>
@@ -151,7 +207,7 @@ export default function ConfigPage() {
             {waterSources.map(s => (
               <tr key={s.id}>
                 <td style={{ fontWeight: 600 }}>{s.name}</td>
-                <td>{s.source_type}</td>
+                <td>{{ rainwater: 'Rain Water', borewell: 'Borewell', tanker: 'Tanker', metered: 'Other metered source' }[s.source_type] || s.source_type}</td>
                 <td>
                   <span className={`badge ${s.is_active ? 'badge-success' : 'badge-secondary'}`}>
                     {s.is_active ? 'Active' : 'Inactive'}

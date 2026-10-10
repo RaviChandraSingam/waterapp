@@ -261,7 +261,7 @@ router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant'
       let costPerUnit = null;
       let capacityLitres = null;
 
-      if (ws.source_type === 'borewell') {
+      if (ws.source_type !== 'tanker') {
         consumptionLitres = ((reading.endReading || 0) - (reading.startReading || 0)) * 1000;
       } else {
         // Determine cost_per_unit: explicit value > previous month > global default

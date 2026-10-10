@@ -309,7 +309,8 @@ INSERT INTO water_sources (name, source_type, capacity_litres, cost_per_unit) VA
 ('C block Borewell', 'borewell', NULL, NULL),
 ('D block Borewell', 'borewell', NULL, NULL),
 ('Regular Tanker', 'tanker', 12000, 2000),
-('Kaveri Tanker', 'tanker', 12000, 1400);
+('Kaveri Tanker', 'tanker', 12000, 1400),
+('Rain Water', 'rainwater', NULL, NULL);
 
 -- ============================================================
 -- BILLING CONFIG (slab definitions)

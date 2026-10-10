@@ -84,6 +84,7 @@ export const api = {
   getConfig: () => request('/config'),
   updateConfig: (key, value) => request(`/config/${key}`, { method: 'PUT', body: JSON.stringify({ value }) }),
   getWaterSources: () => request('/config/water-sources'),
+  createWaterSource: (data) => request('/config/water-sources', { method: 'POST', body: JSON.stringify(data) }),
 
   // Dashboard
   getDashboardSummary: () => request('/dashboard/summary'),

@@ -325,14 +325,14 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     sourcesHeader.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE8F0FE' } };
 
     allSourceReadings.rows.forEach(wsr => {
-      const isBorewell = wsr.source_type === 'borewell';
+      const isMetered = wsr.source_type !== 'tanker';
       costsSheet.addRow([
         wsr.source_name,
-        isBorewell ? (wsr.start_reading !== null ? parseFloat(wsr.start_reading) : '-') : '-',
-        isBorewell
+        isMetered ? (wsr.start_reading !== null ? parseFloat(wsr.start_reading) : '-') : '-',
+        isMetered
           ? (wsr.end_reading !== null ? parseFloat(wsr.end_reading) : '-')
           : (wsr.unit_count !== null ? parseFloat(wsr.unit_count) : '-'),
-        isBorewell ? '-' : (wsr.cost_per_unit !== null ? parseFloat(wsr.cost_per_unit) : '-'),
+        isMetered ? '-' : (wsr.cost_per_unit !== null ? parseFloat(wsr.cost_per_unit) : '-'),
         wsr.total_cost !== null ? parseFloat(wsr.total_cost) : '-',
         wsr.consumption_litres !== null ? parseFloat(wsr.consumption_litres) : '-',
       ]);

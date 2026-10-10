@@ -245,8 +245,8 @@ export default function MonthlyRecordDetailPage() {
   const commonUsageTotal = commonReadings.reduce((sum, cr) => sum + Number(cr.consumption_litres || 0), 0);
   const totalUsage = Object.values(blockTotals).reduce((s, b) => s + b.consumption, 0) + commonUsageTotal;
 
-  // Separate borewell and tanker readings
-  const borewellSources = (record.water_source_readings || []).filter(r => r.source_type === 'borewell');
+  // Separate metered and tanker readings
+  const meteredSources = (record.water_source_readings || []).filter(r => r.source_type !== 'tanker');
   const tankerSources = (record.water_source_readings || []).filter(r => r.source_type === 'tanker');
   const totalWaterInput = (record.water_source_readings || []).reduce((s, r) => s + Number(r.consumption_litres || 0), 0);
 
@@ -395,7 +395,7 @@ export default function MonthlyRecordDetailPage() {
                 </tr>
               </thead>
               <tbody>
-                {borewellSources.map(ws => (
+                {meteredSources.map(ws => (
                   <tr key={ws.id}>
                     <td>{ws.source_name}</td>
                     <td style={{ textAlign: 'right' }}>{ws.start_reading ?? '-'}</td>
@@ -784,7 +784,7 @@ export default function MonthlyRecordDetailPage() {
                       <tr key={idx}>
                         <td>{wsr.sourceName}</td>
                         <td style={{ textAlign: 'right' }}>
-                          {wsr.sourceType === 'borewell' ? (
+                          {wsr.sourceType !== 'tanker' ? (
                             <input type="number" step="1" value={wsr.startReading} onChange={e => {
                               const items = [...editSourceReadings];
                               items[idx].startReading = e.target.value;
@@ -793,7 +793,7 @@ export default function MonthlyRecordDetailPage() {
                           ) : '-'}
                         </td>
                         <td style={{ textAlign: 'right' }}>
-                          {wsr.sourceType === 'borewell' ? (
+                          {wsr.sourceType !== 'tanker' ? (
                             <input type="number" step="1" value={wsr.endReading} onChange={e => {
                               const items = [...editSourceReadings];
                               items[idx].endReading = e.target.value;
@@ -917,8 +917,8 @@ function UploadPreviewModal({ preview, onConfirm, onCancel, confirming }) {
                     <tr key={i}>
                       <td>{ws.name}</td>
                       <td>{ws.type}</td>
-                      <td style={{ textAlign: 'right' }}>{ws.type === 'borewell' ? ws.startReading : ws.unitCount}</td>
-                      <td style={{ textAlign: 'right' }}>{ws.type === 'borewell' ? ws.endReading : '-'}</td>
+                      <td style={{ textAlign: 'right' }}>{ws.type !== 'tanker' ? ws.startReading : ws.unitCount}</td>
+                      <td style={{ textAlign: 'right' }}>{ws.type !== 'tanker' ? ws.endReading : '-'}</td>
                       <td style={{ textAlign: 'right' }}>{Number(ws.consumptionLitres).toLocaleString()}</td>
                       <td style={{ textAlign: 'right' }}>{ws.totalCost != null ? `₹${Number(ws.totalCost).toLocaleString()}` : '-'}</td>
                     </tr>

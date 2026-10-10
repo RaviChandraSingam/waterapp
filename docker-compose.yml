@@ -8,7 +8,7 @@ services:
     image: postgres:16-alpine
     container_name: waterapp-db
     environment:
-      POSTGRES_DB: waterapp
+      POSTGRES_DB: postgres
       POSTGRES_USER: waterapp
       POSTGRES_PASSWORD: waterapp_secret
     ports:
@@ -19,7 +19,7 @@ services:
       # seed.sql is NOT mounted: all data (flats, users, billing history) is restored from
       # waterapp-fixed.sql which preserves the original UUIDs that billing data references.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U waterapp"]
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -31,7 +31,7 @@ services:
     volumes:
       - ./backend:/app
     environment:
-      DATABASE_URL: postgresql://waterapp:waterapp_secret@db:5432/waterapp
+      DATABASE_URL: postgresql://waterapp:waterapp_secret@db:5432/postgres
       JWT_SECRET: waterapp_jwt_secret_change_in_production
       PORT: 3000
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}

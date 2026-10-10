@@ -61,6 +61,53 @@ router.get('/water-sources', authenticate, async (req, res) => {
   }
 });
 
+// POST /api/config/water-sources
+router.post('/water-sources', authenticate, authorize('watercommittee'), async (req, res) => {
+  const { name, sourceType, capacityLitres, costPerUnit } = req.body;
+  if (typeof name !== 'string' || !name.trim() || name.trim().length > 100) {
+    return res.status(400).json({ error: 'Water source name must contain 1–100 characters' });
+  }
+  if (!['borewell', 'tanker', 'rainwater', 'metered'].includes(sourceType)) {
+    return res.status(400).json({ error: 'Invalid water source type' });
+  }
+  const capacity = Number(capacityLitres);
+  const cost = Number(costPerUnit);
+  if (sourceType === 'tanker' && (
+    !['string', 'number'].includes(typeof capacityLitres) || !Number.isFinite(capacity) || capacity <= 0 ||
+    !['string', 'number'].includes(typeof costPerUnit) || String(costPerUnit).trim() === '' || !Number.isFinite(cost) || cost < 0
+  )) {
+    return res.status(400).json({ error: 'Tankers require a positive capacity and a non-negative cost per unit' });
+  }
+  let client;
+  try {
+    client = await db.pool.connect();
+    await client.query('BEGIN');
+    // Serialize creation so concurrent requests cannot create duplicate names.
+    await client.query('LOCK TABLE water_sources IN SHARE ROW EXCLUSIVE MODE');
+    const existing = await client.query('SELECT id FROM water_sources WHERE LOWER(TRIM(name)) = LOWER($1)', [name.trim()]);
+    if (existing.rows.length) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'A water source with this name already exists' });
+    }
+    const result = await client.query(`
+      INSERT INTO water_sources (name, source_type, capacity_litres, cost_per_unit)
+      VALUES ($1, $2, $3, $4) RETURNING *
+    `, [name.trim(), sourceType, sourceType === 'tanker' ? capacity : null, sourceType === 'tanker' ? cost : null]);
+    await client.query(
+      'INSERT INTO audit_log (user_id, action, entity_type, entity_id, new_values) VALUES ($1, $2, $3, $4, $5)',
+      [req.user.id, 'create_water_source', 'water_sources', result.rows[0].id, JSON.stringify(result.rows[0])]
+    );
+    await client.query('COMMIT');
+    cache.invalidate('water_sources');
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    if (client) await client.query('ROLLBACK');
+    res.status(500).json({ error: 'Failed to create water source' });
+  } finally {
+    if (client) client.release();
+  }
+});
+
 // PUT /api/config/water-sources/:id
 router.put('/water-sources/:id', authenticate, authorize('watercommittee'), async (req, res) => {
   try {
