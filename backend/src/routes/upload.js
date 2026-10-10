@@ -140,6 +140,9 @@ router.post('/:monthlyRecordId/preview', authenticate, authorize('accountant', '
         if (!label || typeof label !== 'string') continue;
         const labelStr = label.trim();
         if (!labelStr || SKIP_LABELS.test(labelStr)) continue;
+        // Additional source rows have end/count and consumption values, not costs.
+        if (typeof summarySheet.getCell(`C${row}`).value === 'number' &&
+            typeof summarySheet.getCell(`D${row}`).value === 'number') continue;
         if (typeof val === 'number') preview.costItems.push({ name: labelStr, amount: val });
       }
     }
@@ -332,6 +335,9 @@ router.post('/:monthlyRecordId', authenticate, authorize('accountant', 'watercom
         if (!label || typeof label !== 'string') continue;
         const labelStr = label.trim();
         if (!labelStr || SKIP_LABELS.test(labelStr)) continue;
+        // Additional source rows have end/count and consumption values, not costs.
+        if (typeof summarySheet.getCell(`C${row}`).value === 'number' &&
+            typeof summarySheet.getCell(`D${row}`).value === 'number') continue;
         if (typeof value === 'number') {
           await client.query(`
             INSERT INTO cost_items (monthly_record_id, item_name, amount) VALUES ($1, $2, $3)

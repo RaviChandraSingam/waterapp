@@ -260,9 +260,16 @@ router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant'
       let totalCost = 0;
       let costPerUnit = null;
       let capacityLitres = null;
+      let startReading = null;
+      let endReading = null;
 
       if (ws.source_type !== 'tanker') {
-        consumptionLitres = ((reading.endReading || 0) - (reading.startReading || 0)) * 1000;
+        startReading = Number(reading.startReading ?? 0);
+        endReading = Number(reading.endReading ?? 0);
+        if (!Number.isFinite(startReading) || !Number.isFinite(endReading) || startReading < 0 || endReading < startReading) {
+          return res.status(400).json({ error: 'Meter readings must be non-negative numbers, with end reading at least equal to start reading' });
+        }
+        consumptionLitres = (endReading - startReading) * 1000;
       } else {
         // Determine cost_per_unit: explicit value > previous month > global default
         if (reading.costPerUnit !== undefined && reading.costPerUnit !== null) {
@@ -308,8 +315,8 @@ router.put('/:id/water-sources', authenticate, authorize('plumber', 'accountant'
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (monthly_record_id, water_source_id)
         DO UPDATE SET start_reading = $3, end_reading = $4, unit_count = $5, cost_per_unit = $6, capacity_litres = $7, consumption_litres = $8, total_cost = $9
-      `, [req.params.id, reading.waterSourceId, reading.startReading || null, reading.endReading || null,
-          reading.unitCount || null, costPerUnit, capacityLitres, consumptionLitres, totalCost]);
+      `, [req.params.id, reading.waterSourceId, startReading, endReading,
+          ws.source_type === 'tanker' ? (reading.unitCount === '' ? null : (reading.unitCount ?? null)) : null, costPerUnit, capacityLitres, consumptionLitres, totalCost]);
     }
 
     const result = await db.query(`

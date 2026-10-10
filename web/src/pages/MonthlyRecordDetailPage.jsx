@@ -111,8 +111,8 @@ export default function MonthlyRecordDetailPage() {
         sourceName: ws.name,
         sourceType: ws.source_type,
         defaultCapacityLitres: ws.capacity_litres,
-        startReading: existing?.start_reading || '',
-        endReading: existing?.end_reading || '',
+        startReading: existing?.start_reading ?? '',
+        endReading: existing?.end_reading ?? '',
         unitCount: existing?.unit_count || '',
         costPerUnit: existing?.cost_per_unit ?? ws.cost_per_unit ?? '',
         capacityLitres: existing?.capacity_litres ?? '',
@@ -766,12 +766,13 @@ export default function MonthlyRecordDetailPage() {
             </div>
             <div className="card">
               <h3 style={{ marginBottom: 15 }}>Water Source Readings</h3>
+              <p style={{ color: '#666', marginBottom: 15 }}>For metered sources including Rain Water, enter start and end readings in kL. Consumption = (end − start) × 1,000 litres. Use 0 as the start for a new meter.</p>
               <table>
                 <thead>
                   <tr>
                     <th>Source</th>
-                    <th style={{ textAlign: 'right' }}>Start</th>
-                    <th style={{ textAlign: 'right' }}>End/Count</th>
+                    <th style={{ textAlign: 'right' }}>Start (kL)</th>
+                    <th style={{ textAlign: 'right' }}>End (kL) / Count</th>
                     <th style={{ textAlign: 'right' }}>Capacity (L)</th>
                     <th style={{ textAlign: 'right' }}>Cost/Unit (₹)</th>
                     <th style={{ textAlign: 'right' }}>Total Cost (₹)</th>
@@ -785,7 +786,7 @@ export default function MonthlyRecordDetailPage() {
                         <td>{wsr.sourceName}</td>
                         <td style={{ textAlign: 'right' }}>
                           {wsr.sourceType !== 'tanker' ? (
-                            <input type="number" step="1" value={wsr.startReading} onChange={e => {
+                            <input type="number" min="0" step="any" aria-label={`${wsr.sourceName} start reading (kL)`} placeholder="0" value={wsr.startReading} onChange={e => {
                               const items = [...editSourceReadings];
                               items[idx].startReading = e.target.value;
                               setEditSourceReadings(items);
@@ -794,7 +795,7 @@ export default function MonthlyRecordDetailPage() {
                         </td>
                         <td style={{ textAlign: 'right' }}>
                           {wsr.sourceType !== 'tanker' ? (
-                            <input type="number" step="1" value={wsr.endReading} onChange={e => {
+                            <input type="number" min="0" step="any" aria-label={`${wsr.sourceName} end reading (kL)`} value={wsr.endReading} onChange={e => {
                               const items = [...editSourceReadings];
                               items[idx].endReading = e.target.value;
                               setEditSourceReadings(items);
@@ -828,7 +829,11 @@ export default function MonthlyRecordDetailPage() {
                         <td style={{ textAlign: 'right', color: '#666' }}>
                           {wsr.sourceType === 'tanker' ? `₹${((wsr.unitCount || 0) * (wsr.costPerUnit || 0)).toLocaleString()}` : '-'}
                         </td>
-                        <td style={{ textAlign: 'right', color: '#666' }}>—</td>
+                        <td style={{ textAlign: 'right', color: '#666' }}>
+                          {wsr.sourceType !== 'tanker'
+                            ? ((Number(wsr.endReading || 0) - Number(wsr.startReading || 0)) * 1000).toLocaleString()
+                            : '—'}
+                        </td>
                       </tr>
                     ))
                   ) : (
@@ -836,8 +841,8 @@ export default function MonthlyRecordDetailPage() {
                       {record.water_source_readings?.map(wsr => (
                         <tr key={wsr.id}>
                           <td>{wsr.source_name}</td>
-                          <td style={{ textAlign: 'right' }}>{wsr.start_reading || '-'}</td>
-                          <td style={{ textAlign: 'right' }}>{wsr.end_reading || wsr.unit_count || '-'}</td>
+                          <td style={{ textAlign: 'right' }}>{wsr.source_type === 'tanker' ? '-' : (wsr.start_reading ?? '-')}</td>
+                          <td style={{ textAlign: 'right' }}>{(wsr.source_type === 'tanker' ? wsr.unit_count : wsr.end_reading) ?? '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.source_type === 'tanker' ? Number(wsr.capacity_litres || 12000).toLocaleString() : '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.source_type === 'tanker' ? `₹${Number(wsr.cost_per_unit || 0).toLocaleString()}` : '-'}</td>
                           <td style={{ textAlign: 'right' }}>{wsr.total_cost ? `₹${Number(wsr.total_cost).toLocaleString()}` : '-'}</td>

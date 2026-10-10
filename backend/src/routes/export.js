@@ -26,7 +26,7 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     //   Row 1: title, Row 2: ['', startDate, endDate]
     //   Rows 3-6: borewells in fixed order (Ablock New, A block, C block, D block)
     //   Rows 7-8: tankers (padded to 2 rows)
-    //   Row 9+: cost items
+    //   Row 9+: additional sources, totals, usage and costs
     const summarySheet = workbook.addWorksheet('Summary');
     summarySheet.columns = [
       { width: 55 }, { width: 18 }, { width: 18 }, { width: 18 },
@@ -44,14 +44,15 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
 
     // Rows 3-6: borewells in fixed import order
     const BOREWELL_IMPORT_ORDER = ['Ablock New Borewell', 'A block Borewell', 'C block Borewell', 'D block Borewell'];
-    const borewellResult = await db.query(`
+    const meteredResult = await db.query(`
       SELECT ws.name, wsr.start_reading, wsr.end_reading, wsr.consumption_litres
       FROM water_sources ws
       LEFT JOIN water_source_readings wsr ON ws.id = wsr.water_source_id AND wsr.monthly_record_id = $1
-      WHERE ws.source_type = 'borewell'
+      WHERE ws.source_type <> 'tanker'
+      ORDER BY ws.name
     `, [req.params.monthlyRecordId]);
     const borewellMap = new Map();
-    borewellResult.rows.forEach(r => {
+    meteredResult.rows.forEach(r => {
       if (r.name && !borewellMap.has(r.name)) borewellMap.set(r.name, r);
     });
     BOREWELL_IMPORT_ORDER.forEach(name => {
@@ -86,7 +87,25 @@ router.get('/:monthlyRecordId', authenticate, authorize('accountant', 'watercomm
     });
     while (tankerRowsWritten < 2) { summarySheet.addRow(['', '', '', '']); tankerRowsWritten++; }
 
-    // Row 9: TOTAL in Ltr (matching Overview label)
+    // Include newly configured metered sources without shifting the legacy import rows.
+    meteredResult.rows.filter(source => !BOREWELL_IMPORT_ORDER.includes(source.name)).forEach(source => {
+      summarySheet.addRow([
+        source.name,
+        source.start_reading != null ? Number(source.start_reading) : '',
+        source.end_reading != null ? Number(source.end_reading) : '',
+        source.consumption_litres != null ? Number(source.consumption_litres) : '',
+      ]);
+    });
+    tankerResult.rows.slice(2).forEach(source => {
+      summarySheet.addRow([
+        source.name,
+        source.capacity_litres != null ? Number(source.capacity_litres) : '',
+        source.unit_count != null ? Number(source.unit_count) : '',
+        source.consumption_litres != null ? Number(source.consumption_litres) : '',
+      ]);
+    });
+
+    // TOTAL in Ltr (matching Overview label)
     const totalInputRow = summarySheet.addRow(['TOTAL in Ltr', '', '', parseFloat(record.total_water_input || 0)]);
     totalInputRow.font = { bold: true };
     totalInputRow.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF0F7FF' } };

@@ -99,3 +99,51 @@ test('Rain Water readings convert kilolitres to litres with no tanker charge', a
     assert.equal(stored[6], null);
   } finally { db.query = original; }
 });
+
+for (const [label, startReading, endReading, expected] of [
+  ['numeric zero start', 0, 200, 200000],
+  ['form values', '0', '200', 200000],
+  ['blank start defaults to zero', '', '200', 200000],
+  ['nonzero start', '50', '200', 150000],
+  ['decimal readings', '0', '0.5', 500],
+]) {
+  test(`Rain Water: ${label} is saved and calculated correctly`, async () => {
+    const original = db.query;
+    let stored;
+    db.query = async (sql, params) => {
+      if (sql.includes('SELECT status')) return { rows: [{ status: 'draft', year: 2026, month: 10 }] };
+      if (sql.includes('SELECT * FROM water_sources')) return { rows: [{ source_type: 'rainwater' }] };
+      if (sql.includes('INSERT INTO water_source_readings')) stored = params;
+      return { rows: [] };
+    };
+    try {
+      const res = await invoke(monthlyRouter, '/:id/water-sources', 'put', {
+        readings: [{ waterSourceId: 'rain-id', startReading, endReading, unitCount: 200 }],
+      }, committee);
+      assert.equal(res.statusCode, 200);
+      assert.equal(stored[2], Number(startReading));
+      assert.equal(stored[3], Number(endReading));
+      assert.equal(stored[4], null, 'metered sources must not retain a legacy tanker count');
+      assert.equal(stored[7], expected);
+      assert.equal(stored[8], 0);
+    } finally { db.query = original; }
+  });
+}
+
+test('invalid metered readings are rejected without saving consumption', async () => {
+  const original = db.query;
+  db.query = async sql => {
+    if (sql.includes('SELECT status')) return { rows: [{ status: 'draft' }] };
+    if (sql.includes('SELECT * FROM water_sources')) return { rows: [{ source_type: 'rainwater' }] };
+    assert.ok(!sql.includes('INSERT INTO water_source_readings'));
+    return { rows: [] };
+  };
+  try {
+    for (const [startReading, endReading] of [[-1, 200], [200, 100], [0, 'invalid']]) {
+      const res = await invoke(monthlyRouter, '/:id/water-sources', 'put', {
+        readings: [{ waterSourceId: 'rain-id', startReading, endReading }],
+      }, committee);
+      assert.equal(res.statusCode, 400);
+    }
+  } finally { db.query = original; }
+});

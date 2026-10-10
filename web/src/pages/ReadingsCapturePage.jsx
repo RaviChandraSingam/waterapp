@@ -690,6 +690,7 @@ export default function ReadingsCapturePage() {
 
           <div className="card">
             <h3 style={{ marginBottom: 15 }}>Water Source Readings</h3>
+            <p style={{ color: '#666', marginBottom: 15 }}>Metered sources, including Rain Water, use start and end readings in kL. Use 0 as the start for a new meter. Each kL equals 1,000 litres.</p>
             {captureDetailsLoading ? (
               <div className="empty-state">Loading water sources...</div>
             ) : (
@@ -697,8 +698,8 @@ export default function ReadingsCapturePage() {
                 <thead>
                   <tr>
                     <th>Source</th>
-                    <th style={{ textAlign: 'right' }}>Start</th>
-                    <th style={{ textAlign: 'right' }}>End/Count</th>
+                    <th style={{ textAlign: 'right' }}>Start (kL)</th>
+                    <th style={{ textAlign: 'right' }}>End (kL) / Count</th>
                     <th style={{ textAlign: 'right' }}>Capacity (L)</th>
                     <th style={{ textAlign: 'right' }}>Cost/Unit (₹)</th>
                   </tr>
@@ -711,7 +712,10 @@ export default function ReadingsCapturePage() {
                         {source.sourceType !== 'tanker' ? (
                           <input
                             type="number"
-                            step="1"
+                            step="any"
+                            min="0"
+                            aria-label={`${source.sourceName} start reading (kL)`}
+                            placeholder="0"
                             value={source.startReading}
                             onChange={e => {
                               const next = [...sourceReadings];
@@ -727,7 +731,9 @@ export default function ReadingsCapturePage() {
                         {source.sourceType !== 'tanker' ? (
                           <input
                             type="number"
-                            step="1"
+                            step="any"
+                            min="0"
+                            aria-label={`${source.sourceName} end reading (kL)`}
                             value={source.endReading}
                             onChange={e => {
                               const next = [...sourceReadings];
