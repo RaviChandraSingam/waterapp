@@ -164,6 +164,11 @@ router.post('/', authenticate, authorize('plumber', 'accountant', 'watercommitte
       }
     }
 
+    if (readings.some(reading => Number(reading.readingSequence) === 1) &&
+        !req.user.isSuperadmin && req.user.role !== 'watercommittee') {
+      return res.status(403).json({ error: 'Only admins and water committee users can update starting readings' });
+    }
+
     const results = [];
     const warnings = [];
 
@@ -237,6 +242,9 @@ router.put('/:id', authenticate, authorize('accountant', 'watercommittee'), asyn
     }
 
     const old = readingRow.rows[0];
+    if (old.reading_sequence === 1 && !req.user.isSuperadmin && req.user.role !== 'watercommittee') {
+      return res.status(403).json({ error: 'Only admins and water committee users can update starting readings' });
+    }
     const { hasWarning, warningMessage } = await detectWarnings(
       old.monthly_record_id,
       old.flat_id,

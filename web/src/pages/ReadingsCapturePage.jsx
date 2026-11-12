@@ -39,6 +39,7 @@ export default function ReadingsCapturePage() {
   const availableRecords = user.role === 'plumber' ? records.filter(r => r.status === 'draft') : records;
   const isEditable = !!recordObj && (user.role === 'plumber' ? recordObj.status === 'draft' : recordObj.status !== 'final');
   const canEdit = user.isSuperadmin || user.role === 'accountant' || user.role === 'watercommittee';
+  const canOverrideStartingReading = user.isSuperadmin || user.role === 'watercommittee';
 
   useEffect(() => {
     async function load() {
@@ -175,7 +176,7 @@ export default function ReadingsCapturePage() {
       setMessage(`Error: Cannot save — record is in '${recordObj?.status}' status`);
       return;
     }
-    if (!selectedFlat || !singleValue) {
+    if (!selectedFlat || singleValue === '') {
       setMessage('Error: Select a flat and enter a reading value');
       return;
     }
@@ -376,9 +377,15 @@ export default function ReadingsCapturePage() {
               <div className="form-group">
                 <label>Reading Sequence</label>
                 <select value={readingSequence} onChange={e => setReadingSequence(parseInt(e.target.value))}>
+                  {canOverrideStartingReading && <option value={1}>Reading 1 (Starting Reading — meter replacement)</option>}
                   <option value={2}>Reading 2 (Mid Month)</option>
                   <option value={3}>Reading 3 (End of Month)</option>
                 </select>
+                {readingSequence === 1 && (
+                  <div style={{ marginTop: 6, color: '#9a6700', fontSize: '0.86em' }}>
+                    Use this only when a meter has been replaced. This changes the month’s starting reading and is recorded in the audit log.
+                  </div>
+                )}
               </div>
             </>
           )}
@@ -535,7 +542,7 @@ export default function ReadingsCapturePage() {
                         <input
                           type="number"
                           step="1"
-                          value={readingValues[flat.id] || ''}
+                          value={readingValues[flat.id] ?? ''}
                           onChange={e => setReadingValues({ ...readingValues, [flat.id]: e.target.value })}
                           placeholder={existing ? String(existing.reading_value) : 'Enter reading'}
                           style={{ width: '100%' }}
