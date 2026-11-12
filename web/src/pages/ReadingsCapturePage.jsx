@@ -26,7 +26,6 @@ export default function ReadingsCapturePage() {
   const [showAudit, setShowAudit] = useState(false);
   const [editingId, setEditingId] = useState(null);
   const [editValue, setEditValue] = useState('');
-  const [prevMonthReadings, setPrevMonthReadings] = useState([]);
   const [activeCaptureTab, setActiveCaptureTab] = useState('meters');
   const [commonAreas, setCommonAreas] = useState([]);
   const [commonReadings, setCommonReadings] = useState([]);
@@ -129,7 +128,6 @@ export default function ReadingsCapturePage() {
         });
         setReadingValues(values);
       });
-      api.getPreviousReadings(selectedRecord, selectedBlock).then(setPrevMonthReadings).catch(() => setPrevMonthReadings([]));
     }
   }, [selectedRecord, selectedBlock, readingSequence]);
 
@@ -460,14 +458,14 @@ export default function ReadingsCapturePage() {
         <div className="card">
           <h3>Enter Reading — Flat {flats.find(f => f.id === selectedFlat)?.flat_number}</h3>
           {(() => {
-            const prevMonthReading = prevMonthReadings.find(r => r.flat_id === selectedFlat);
+            const startingReading = existingReadings.find(r => r.flat_id === selectedFlat && r.reading_sequence === 1);
             const existing = existingReadings.find(r => r.flat_id === selectedFlat && r.reading_sequence === readingSequence);
             return (
               <div style={{ marginTop: 12 }}>
-                {prevMonthReading && (
+                {startingReading && (
                   <div style={{ background: '#f0f4ff', padding: '8px 12px', borderRadius: 6, marginBottom: 12, border: '1px solid #c5d5f5' }}>
-                    <span style={{ color: '#555' }}>Last Month Closing Reading: </span>
-                    <strong style={{ fontSize: '1.1em' }}>{prevMonthReading.reading_value}</strong>
+                    <span style={{ color: '#555' }}>Month Starting Reading: </span>
+                    <strong style={{ fontSize: '1.1em' }}>{startingReading.reading_value}</strong>
                   </div>
                 )}
                 {existing && <p style={{ color: '#666' }}>Current saved value: <strong>{existing.reading_value}</strong> (captured by {existing.captured_by_name || 'unknown'})</p>}
@@ -508,7 +506,7 @@ export default function ReadingsCapturePage() {
             <thead>
               <tr>
                 <th>Flat No</th>
-                <th>Last Month Closing</th>
+                <th>Month Starting Reading</th>
                 <th style={{ width: 180 }}>Current Reading</th>
                 <th>Captured By</th>
                 <th>Status</th>
@@ -518,12 +516,12 @@ export default function ReadingsCapturePage() {
             <tbody>
               {blockFlats.map(flat => {
                 const existing = existingReadings.find(r => r.flat_id === flat.id && r.reading_sequence === readingSequence);
-                const prevMonthReading = prevMonthReadings.find(r => r.flat_id === flat.id);
+                const startingReading = existingReadings.find(r => r.flat_id === flat.id && r.reading_sequence === 1);
 
                 return (
                   <tr key={flat.id} className={existing?.has_warning ? 'warning-row' : ''}>
                     <td style={{ fontWeight: 600 }}>{flat.flat_number}</td>
-                    <td style={{ color: '#555', background: '#f8f9fa' }}>{prevMonthReading?.reading_value ?? '-'}</td>
+                    <td style={{ color: '#555', background: '#f8f9fa' }}>{startingReading?.reading_value ?? '-'}</td>
                     <td>
                       {editingId === existing?.reading_id ? (
                         <div style={{ display: 'flex', gap: 4 }}>
